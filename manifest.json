@@ -2,11 +2,11 @@
   "schema": 1,
   "releases": {
     "stable": {
-      "version": "2.2.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.2.0/job-agent-2.2.0-macos.zip",
-      "sha256": "e6b75f0132588b8a940fef59176bcc2f4d78f9960a1697f3bc25917b1a2fcc32",
-      "notes": "Desktop 2.2.0 adds a Vacancy Dashboard and Applications history. It shows score, position, company, decision and status; provides job details, Open job, Apply manually, REVIEW, Interesting, Skip and cover-letter actions; stores richer vacancy snapshots locally; and lets REVIEW/SKIP overrides affect future runs while final employer submission remains manual.",
-      "min_version": "2.1.1"
+      "version": "2.2.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.2.1/job-agent-2.2.1-macos.zip",
+      "sha256": "31b51f0fa3fde6f4b24333a26a6037da3ebf81c471ae103dcbe2a7370dfbb9d5",
+      "notes": "Fix Desktop 2.2 Dashboard crash caused by a missing time import when saving vacancy snapshots. The release pipeline now runs a dashboard-persistence smoke test before building and publishing.",
+      "min_version": "2.2.0"
     },
     "beta": {
       "version": "2.2.1",
