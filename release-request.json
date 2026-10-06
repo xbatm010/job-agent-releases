@@ -1,12 +1,10 @@
 {
-  "publish": false,
-  "request_id": 3,
-  "version": "2.1.0",
-  "channel": "stable",
-  "min_version": "2.0.3",
+  "publish": true,
+  "request_id": 4,
+  "version": "2.1.1",
+  "channel": "beta",
+  "min_version": "2.1.0",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.1.0 introduces a local Profile tab and the automated GitHub Actions release pipeline. Personal contact data and CV are no longer part of the public source bundle.",
-  "last_published": "2.1.0",
-  "last_sha256": "d83a812b50d7178a02c9779ffdcc276cf0033687e0961b186d6b31427d82eb06"
+  "notes": "Fix macOS in-app update installation: preserve app bundle symlinks by extracting updates with /usr/bin/ditto, keep the previous app as a rollback copy, and validate the extracted bundle before publication."
 }
