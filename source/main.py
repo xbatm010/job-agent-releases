@@ -6370,7 +6370,19 @@ async def main():
 
         override = job_overrides.get(canonical_history_key(job), {})
         override_decision = str(override.get("decision", "")).upper().strip()
-        if override_decision == "SKIP":
+
+        if override_decision == "MANUAL_APPLY":
+            if manual_review_apply_eligible(job, loc_allowed):
+                job["decision"] = "APPLY"
+                job["manual_queue"] = True
+                job.setdefault("reasons", []).append(
+                    "desktop_override:MANUAL_APPLY"
+                )
+            else:
+                job.setdefault("reasons", []).append(
+                    "desktop_override:MANUAL_APPLY_BLOCKED"
+                )
+        elif override_decision == "SKIP":
             job["decision"] = "SKIP"
             job.setdefault("reasons", []).append("desktop_override:SKIP")
         elif override_decision == "REVIEW":
