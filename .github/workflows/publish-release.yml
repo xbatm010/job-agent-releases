@@ -186,7 +186,28 @@ jobs:
           main.save_status(job, "REVIEW_PENDING", 65, "smoke")
           assert main.APPLICATIONS_FILE.exists()
           assert main.VACANCIES_FILE.exists()
-          print("Dashboard persistence smoke test: OK")
+
+          safe = dict(job)
+          safe.update({
+              "score": 69,
+              "decision": "REVIEW",
+              "evidence_quality": "strong",
+              "hard_experience": False,
+          })
+          assert main.manual_review_apply_eligible(safe, True)
+
+          weak = dict(safe, evidence_quality="weak")
+          assert not main.manual_review_apply_eligible(weak, True)
+
+          blocked_exp = dict(safe, hard_experience=True)
+          assert not main.manual_review_apply_eligible(blocked_exp, True)
+
+          assert not main.manual_review_apply_eligible(safe, False)
+
+          low = dict(safe, score=64)
+          assert not main.manual_review_apply_eligible(low, True)
+
+          print("Dashboard persistence + manual queue safety smoke test: OK")
           PY
 
       - name: Build arm64 macOS app
