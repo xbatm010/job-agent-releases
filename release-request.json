@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 4,
   "version": "2.1.1",
   "channel": "beta",
   "min_version": "2.1.0",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Fix macOS in-app update installation: preserve app bundle symlinks by extracting updates with /usr/bin/ditto, keep the previous app as a rollback copy, and validate the extracted bundle before publication."
+  "notes": "Fix macOS in-app update installation: preserve app bundle symlinks by extracting updates with /usr/bin/ditto, keep the previous app as a rollback copy, and validate the extracted bundle before publication.",
+  "last_published": "2.1.1",
+  "last_sha256": "4e326585dcf462075dd6d1bdfe8c154e054a783f0a15fcf97c10df3c6b40cc4b"
 }
