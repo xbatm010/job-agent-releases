@@ -81,10 +81,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.2.1", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.3.0", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.2.1"
+APP_VERSION = "2.3.0"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -910,7 +910,9 @@ class JobAgentWindow(QMainWindow):
             f"Status: {record.get('status', '')}",
             f"Role class: {record.get('role_class', '')}",
             f"Source: {record.get('source', '')}",
-            f"Location: {record.get('location', '')}",
+            f"Location: {record.get('resolved_location') or record.get('location', '')}",
+            f"Evidence: {record.get('evidence_quality', '')}",
+            f"3+ years block: {'YES' if record.get('hard_experience') else 'NO'}",
         ]
         if override_decision:
             details.append(f"Desktop override: {override_decision}")
@@ -941,12 +943,15 @@ class JobAgentWindow(QMainWindow):
                 overrides.get(jid, {}).get("decision", "")
             ).strip()
             decision = override or str(record.get("decision", ""))
+            display_decision = (
+                "QUEUED" if override == "MANUAL_APPLY" else decision
+            )
 
             values = [
                 str(record.get("score", "")),
                 str(record.get("title", "")),
                 str(record.get("company", "")),
-                decision,
+                display_decision,
                 str(record.get("status", "")),
             ]
             for col, value in enumerate(values):
