@@ -2,18 +2,18 @@
   "schema": 1,
   "releases": {
     "stable": {
-      "version": "2.2.1",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.2.1/job-agent-2.2.1-macos.zip",
-      "sha256": "31b51f0fa3fde6f4b24333a26a6037da3ebf81c471ae103dcbe2a7370dfbb9d5",
-      "notes": "Fix Desktop 2.2 Dashboard crash caused by a missing time import when saving vacancy snapshots. The release pipeline now runs a dashboard-persistence smoke test before building and publishing.",
-      "min_version": "2.2.0"
+      "version": "2.3.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.3.1/job-agent-2.3.1-macos.zip",
+      "sha256": "8da7e386d913f0a236b1a982ae21fefad84467cacd9a278b6fa32ae6863947c9",
+      "notes": "Fix Jobs.cz microsite email autofill by adding semantic email-field detection using labels, placeholders, aria metadata and nearby field text. Diagnostics now include the email field source. Manual queue behavior and manual final Submit safety remain unchanged.",
+      "min_version": "2.2.1"
     },
     "beta": {
       "version": "2.3.1",
       "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.3.1/job-agent-2.3.1-macos.zip",
       "sha256": "8da7e386d913f0a236b1a982ae21fefad84467cacd9a278b6fa32ae6863947c9",
       "notes": "Fix Jobs.cz microsite email autofill by adding semantic email-field detection using labels, placeholders, aria metadata and nearby field text. Diagnostics now include the email field source. Manual queue behavior and manual final Submit safety remain unchanged.",
-      "min_version": "2.3.0"
+      "min_version": "2.2.1"
     }
   }
 }
