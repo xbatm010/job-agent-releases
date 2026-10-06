@@ -205,6 +205,37 @@ jobs:
           Path("release-notes.txt").write_text(notes + "\n", encoding="utf-8")
           PY
 
+      - name: Validate updater extraction
+        shell: bash
+        env:
+          ZIP: ${{ steps.package.outputs.zip }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path("buildsrc").resolve()))
+          from updater import extract_app
+
+          app = extract_app(Path(os.environ["ZIP"]).resolve())
+          print("Extracted update bundle:", app)
+
+          subprocess.run(
+              ["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)],
+              check=True,
+          )
+
+          symlinks = [p for p in app.rglob("*") if p.is_symlink()]
+          print("Preserved symlinks:", len(symlinks))
+          if not symlinks:
+              raise SystemExit(
+                  "Update archive extraction did not preserve any symlinks."
+              )
+          PY
+
       - name: Publish GitHub Release
         shell: bash
         env:
