@@ -34,6 +34,7 @@ STATE_DIR = Path(os.path.expanduser(os.getenv("STATE_DIR", "~/.job_agent")))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 APPLICATIONS_FILE = STATE_DIR / "applications.csv"
 VACANCIES_FILE = STATE_DIR / "vacancies.jsonl"
+OVERRIDES_FILE = STATE_DIR / "job_overrides.json"
 LOGIN_BOOTSTRAP = os.getenv("LOGIN_BOOTSTRAP", "true").lower() == "true"
 LOGIN_WAIT_SECONDS = int(os.getenv("LOGIN_WAIT_SECONDS", "240"))
 MANUAL_CV_FALLBACK = os.getenv("MANUAL_CV_FALLBACK", "true").lower() == "true"
@@ -1350,6 +1351,16 @@ def load_processed():
             if canonical:
                 out.add(canonical)
     return out
+
+def load_job_overrides():
+    if not OVERRIDES_FILE.exists():
+        return {}
+    try:
+        payload = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
 
 def save_status(job, status, score, reason):
     p = APPLICATIONS_FILE
@@ -6309,6 +6320,7 @@ async def main():
     )
 
     ranked = []
+    job_overrides = load_job_overrides()
     for job in deduped[:MAX_JOBS_TO_REVIEW]:
         if (
             job.get("source") == "jobs.cz"
@@ -6336,6 +6348,18 @@ async def main():
             )
 
         job.update(result)
+
+        override = job_overrides.get(canonical_history_key(job), {})
+        override_decision = str(override.get("decision", "")).upper().strip()
+        if override_decision == "SKIP":
+            job["decision"] = "SKIP"
+            job.setdefault("reasons", []).append("desktop_override:SKIP")
+        elif override_decision == "REVIEW":
+            job["decision"] = "REVIEW"
+            job.setdefault("reasons", []).append("desktop_override:REVIEW")
+        elif override_decision == "INTERESTING":
+            job.setdefault("reasons", []).append("desktop_override:INTERESTING")
+
         ranked.append(job)
 
     ranked.sort(key=lambda j: (-j["score"], j["decision"] != "APPLY"))
