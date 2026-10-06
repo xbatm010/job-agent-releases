@@ -9,11 +9,11 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.3.1",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.3.1/job-agent-2.3.1-macos.zip",
-      "sha256": "8da7e386d913f0a236b1a982ae21fefad84467cacd9a278b6fa32ae6863947c9",
-      "notes": "Fix Jobs.cz microsite email autofill by adding semantic email-field detection using labels, placeholders, aria metadata and nearby field text. Diagnostics now include the email field source. Manual queue behavior and manual final Submit safety remain unchanged.",
-      "min_version": "2.2.1"
+      "version": "2.4.0",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.4.0/job-agent-2.4.0-macos.zip",
+      "sha256": "b9af67f8b3b4c821e88a83f8c5b34a0bf6e22e78072a2754ec1eb4b6564ec804",
+      "notes": "Desktop 2.4.0 improves Czech cover-letter handling on Jobs.cz and similar forms. It can safely reveal optional cover/motivation/message fields only from explicit cover-letter controls, supports textarea and rich-text editors with stricter semantic matching, and adds Show/Copy cover-letter actions in Dashboard. Final employer Submit remains manual.",
+      "min_version": "2.3.1"
     }
   }
 }

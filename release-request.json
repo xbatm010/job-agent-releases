@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 9,
   "version": "2.4.0",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.4.0 improves Czech cover-letter handling on Jobs.cz and similar forms. It can safely reveal optional cover/motivation/message fields only from explicit cover-letter controls, supports textarea and rich-text editors with stricter semantic matching, and adds Show/Copy cover-letter actions in Dashboard. Final employer Submit remains manual."
+  "notes": "Desktop 2.4.0 improves Czech cover-letter handling on Jobs.cz and similar forms. It can safely reveal optional cover/motivation/message fields only from explicit cover-letter controls, supports textarea and rich-text editors with stricter semantic matching, and adds Show/Copy cover-letter actions in Dashboard. Final employer Submit remains manual.",
+  "last_published": "2.4.0",
+  "last_sha256": "b9af67f8b3b4c821e88a83f8c5b34a0bf6e22e78072a2754ec1eb4b6564ec804"
 }
