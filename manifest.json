@@ -2,10 +2,10 @@
   "schema": 1,
   "releases": {
     "stable": {
-      "version": "2.1.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.1.0/job-agent-2.1.0-macos.zip",
-      "sha256": "d83a812b50d7178a02c9779ffdcc276cf0033687e0961b186d6b31427d82eb06",
-      "notes": "Desktop 2.1.0 introduces a local Profile tab and the automated GitHub Actions release pipeline. Personal contact data and CV are no longer part of the public source bundle.",
+      "version": "2.1.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.1.1/job-agent-2.1.1-macos.zip",
+      "sha256": "4e326585dcf462075dd6d1bdfe8c154e054a783f0a15fcf97c10df3c6b40cc4b",
+      "notes": "Fix macOS in-app update installation: preserve app bundle symlinks by extracting updates with /usr/bin/ditto, keep the previous app as a rollback copy, and validate the extracted bundle before publication.",
       "min_version": "2.0.3"
     },
     "beta": {
@@ -13,7 +13,7 @@
       "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.1.1/job-agent-2.1.1-macos.zip",
       "sha256": "4e326585dcf462075dd6d1bdfe8c154e054a783f0a15fcf97c10df3c6b40cc4b",
       "notes": "Fix macOS in-app update installation: preserve app bundle symlinks by extracting updates with /usr/bin/ditto, keep the previous app as a rollback copy, and validate the extracted bundle before publication.",
-      "min_version": "2.1.0"
+      "min_version": "2.0.3"
     }
   }
 }
