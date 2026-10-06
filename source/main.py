@@ -95,6 +95,7 @@ ALLOW_SAME_HOST_REPLY_FALLBACK = os.getenv(
     "ALLOW_SAME_HOST_REPLY_FALLBACK", "true"
 ).lower() == "true"
 MIN_REVIEW_SCORE = int(os.getenv("MIN_REVIEW_SCORE", "60"))
+MANUAL_REVIEW_APPLY_MIN_SCORE = int(os.getenv("MANUAL_REVIEW_APPLY_MIN_SCORE", "65"))
 MAX_DISCOVERY_ITEMS = int(os.getenv("MAX_DISCOVERY_ITEMS", "30"))
 MAX_JOBS_TO_REVIEW = int(os.getenv("MAX_JOBS_TO_REVIEW", "10"))
 CV_PATH = os.getenv("CV_PATH", "").strip()
@@ -1322,6 +1323,7 @@ def score_job(job):
         "confidence": confidence,
         "matched": matched,
         "gaps": gaps,
+        "hard_experience": hard_experience,
         "soft_experience_penalty": soft_exp_penalty,
         "verified_target_promotion": verified_target_promotion,
         "expanded_role_eligible": expanded_eligible,
