@@ -155,6 +155,7 @@ DEFAULTS = {
     "entry_apply": 68,
     "expanded_apply": 74,
     "review": 60,
+    "manual_queue_min": 65,
     "browser_evidence": True,
     "czech_cover_letter": True,
     "prague_only": True,
@@ -316,6 +317,7 @@ def child_env(settings: dict) -> dict:
         "ENTRY_APPLY_SCORE": str(settings["entry_apply"]),
         "EXPANDED_APPLY_SCORE": str(settings["expanded_apply"]),
         "MIN_REVIEW_SCORE": str(settings["review"]),
+        "MANUAL_REVIEW_APPLY_MIN_SCORE": str(settings["manual_queue_min"]),
         "BROWSER_EVIDENCE_RECOVERY": str(
             settings["browser_evidence"]
         ).lower(),
