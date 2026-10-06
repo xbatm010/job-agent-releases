@@ -1,12 +1,10 @@
 {
-  "publish": false,
-  "request_id": 4,
-  "version": "2.1.1",
+  "publish": true,
+  "request_id": 5,
+  "version": "2.2.0",
   "channel": "beta",
-  "min_version": "2.1.0",
+  "min_version": "2.1.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Fix macOS in-app update installation: preserve app bundle symlinks by extracting updates with /usr/bin/ditto, keep the previous app as a rollback copy, and validate the extracted bundle before publication.",
-  "last_published": "2.1.1",
-  "last_sha256": "4e326585dcf462075dd6d1bdfe8c154e054a783f0a15fcf97c10df3c6b40cc4b"
+  "notes": "Desktop 2.2.0 adds a Vacancy Dashboard and Applications history. It shows score, position, company, decision and status; provides job details, Open job, Apply manually, REVIEW, Interesting, Skip and cover-letter actions; stores richer vacancy snapshots locally; and lets REVIEW/SKIP overrides affect future runs while final employer submission remains manual."
 }
