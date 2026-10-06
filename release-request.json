@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 7,
   "version": "2.3.0",
   "channel": "beta",
   "min_version": "2.2.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.3.0 adds a guarded manual application queue for REVIEW vacancies. From Dashboard, REVIEW jobs meeting the manual queue floor can be queued for next-run application preparation without lowering global APPLY thresholds. The agent re-checks strong evidence, allowed location and 3+ years experience blockers before promotion, and final employer Submit remains manual."
+  "notes": "Desktop 2.3.0 adds a guarded manual application queue for REVIEW vacancies. From Dashboard, REVIEW jobs meeting the manual queue floor can be queued for next-run application preparation without lowering global APPLY thresholds. The agent re-checks strong evidence, allowed location and 3+ years experience blockers before promotion, and final employer Submit remains manual.",
+  "last_published": "2.3.0",
+  "last_sha256": "d4d92eb497b929485975b7c920a2c5639fbd73c43f62557927228a306f245b78"
 }
