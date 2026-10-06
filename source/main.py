@@ -3852,6 +3852,9 @@ def cover_letter_semantic_score(meta):
         "cover letter",
         "motivation letter",
         "motivacni text",
+        "pruvodni zprava",
+        "cover note",
+        "application message",
     ]
     employer_message = [
         "zprava pro zamestnavatele",
@@ -3860,6 +3863,10 @@ def cover_letter_semantic_score(meta):
         "vzkaz pro personalistu",
         "message to employer",
         "message to recruiter",
+        "zprava k zadosti",
+        "vzkaz k zadosti",
+        "zprava k odpovedi",
+        "vzkaz k odpovedi",
     ]
 
     if any(x in norm for x in strong):
@@ -3914,7 +3921,7 @@ async def textarea_metadata(el):
         nearby = await el.evaluate("""
             (e) => {
               const p = e.closest(
-                '.form-group, .field, .form-field, .control, label, section'
+                '.form-group, .field, .form-field, .control, .cp-form__field, .cp-form__row, [class*="form"], label, section'
               );
               return p ? (p.innerText || p.textContent || '') : '';
             }
@@ -3944,6 +3951,64 @@ async def textarea_metadata(el):
         parts.append(clean(nearby)[:600])
 
     return clean(" ".join(parts))
+
+
+async def reveal_cover_letter_field(page):
+    """
+    Reveal an optional cover-letter/message control only when the visible
+    action text is explicitly about a cover/motivation/employer message.
+    This never clicks generic Continue/Submit/Send controls.
+    """
+    phrases = [
+        "pridat pruvodni dopis",
+        "pruvodni dopis",
+        "pridat motivacni dopis",
+        "motivacni dopis",
+        "pridat zpravu pro zamestnavatele",
+        "zprava pro zamestnavatele",
+        "pridat vzkaz pro zamestnavatele",
+        "vzkaz pro zamestnavatele",
+        "add cover letter",
+        "cover letter",
+        "add message to employer",
+        "message to employer",
+    ]
+    blocked = [
+        "odeslat",
+        "submit",
+        "send application",
+        "odpovedet",
+        "mam zajem",
+        "continue",
+        "pokracovat",
+    ]
+
+    for frame in await page_contexts(page):
+        try:
+            loc = frame.locator('button, a, [role="button"]')
+            for i in range(min(await loc.count(), 160)):
+                el = loc.nth(i)
+                try:
+                    if not await el.is_visible() or await el.is_disabled():
+                        continue
+                    text = clean(await el.inner_text())
+                    norm = normalize_key_text(text)
+                    if not norm:
+                        continue
+                    if any(x in norm for x in blocked):
+                        continue
+                    if not any(x in norm for x in phrases):
+                        continue
+
+                    await el.click(timeout=5000)
+                    await page.wait_for_timeout(350)
+                    return True, f"revealed_by:{text[:120]}"
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    return False, ""
 
 
 async def find_cover_letter_field(page):
@@ -3997,7 +4062,7 @@ async def find_cover_letter_field(page):
                         nearby = await el.evaluate("""
                             (e) => {
                               const p = e.closest(
-                                '.form-group, .field, .form-field, section'
+                                '.form-group, .field, .form-field, .cp-form__field, .cp-form__row, [class*="form"], section'
                               );
                               return p
                                 ? (p.innerText || p.textContent || '')
@@ -4068,8 +4133,17 @@ async def fill_czech_cover_letter(page, job):
         return result
 
     candidate = await find_cover_letter_field(page)
+    reveal_source = ""
     if candidate is None:
-        result["source"] = "field_not_found"
+        revealed, reveal_source = await reveal_cover_letter_field(page)
+        if revealed:
+            candidate = await find_cover_letter_field(page)
+
+    if candidate is None:
+        result["source"] = (
+            reveal_source + "|field_not_found"
+            if reveal_source else "field_not_found"
+        )
         return result
 
     score, kind, _, el, meta = candidate
@@ -4112,7 +4186,11 @@ async def fill_czech_cover_letter(page, job):
 
         actual = actual or ""
         result["filled"] = len(clean(actual)) >= min(80, len(clean(letter)))
-        result["source"] = f"semantic_{kind}_score_{score}"
+        result["source"] = (
+            f"{reveal_source}|semantic_{kind}_score_{score}"
+            if reveal_source
+            else f"semantic_{kind}_score_{score}"
+        )
         result["chars"] = len(actual)
         return result
     except Exception as exc:
