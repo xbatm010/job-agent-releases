@@ -81,10 +81,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.3.1", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.4.0", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.4.0"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -779,6 +779,7 @@ class JobAgentWindow(QMainWindow):
         self.interesting_btn = QPushButton("Mark interesting")
         self.skip_job_btn = QPushButton("Skip")
         self.cover_letter_btn = QPushButton("Show cover letter")
+        self.copy_cover_letter_btn = QPushButton("Copy cover letter")
 
         self.open_job_btn.clicked.connect(self._open_selected_job)
         self.manual_apply_btn.clicked.connect(self._queue_selected_application)
@@ -794,6 +795,9 @@ class JobAgentWindow(QMainWindow):
         self.cover_letter_btn.clicked.connect(
             self._show_selected_cover_letter
         )
+        self.copy_cover_letter_btn.clicked.connect(
+            self._copy_selected_cover_letter
+        )
 
         for button in [
             self.open_job_btn,
@@ -802,6 +806,7 @@ class JobAgentWindow(QMainWindow):
             self.interesting_btn,
             self.skip_job_btn,
             self.cover_letter_btn,
+            self.copy_cover_letter_btn,
         ]:
             dash_buttons.addWidget(button)
         dashboard_layout.addLayout(dash_buttons)
@@ -1093,6 +1098,23 @@ class JobAgentWindow(QMainWindow):
             )
             return
         self.dashboard_detail.setPlainText(letter)
+
+    def _copy_selected_cover_letter(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        letter = str(record.get("cover_letter", "")).strip()
+        if not letter:
+            QMessageBox.information(
+                self,
+                "Cover letter",
+                "No saved cover letter is available for this vacancy yet.",
+            )
+            return
+        QApplication.clipboard().setText(letter)
+        self._append_log(
+            f"Cover letter copied: {record.get('title', '')}"
+        )
 
     def _score_spin(self):
         w = QSpinBox()
