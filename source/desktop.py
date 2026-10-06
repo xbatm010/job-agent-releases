@@ -614,12 +614,14 @@ class JobAgentWindow(QMainWindow):
         self.entry_spin = self._score_spin()
         self.expanded_spin = self._score_spin()
         self.review_spin = self._score_spin()
+        self.manual_queue_spin = self._score_spin()
 
         scoring_layout.addRow("Target APPLY ≥", self.apply_spin)
         scoring_layout.addRow("Verified target ≥", self.verified_spin)
         scoring_layout.addRow("Junior / Intern ≥", self.entry_spin)
         scoring_layout.addRow("Expanded role ≥", self.expanded_spin)
         scoring_layout.addRow("REVIEW ≥", self.review_spin)
+        scoring_layout.addRow("Manual queue ≥", self.manual_queue_spin)
         tabs.addTab(scoring_tab, "Scoring")
 
         paths_tab = QWidget()
@@ -1073,6 +1075,7 @@ class JobAgentWindow(QMainWindow):
         self.entry_spin.setValue(int(s["entry_apply"]))
         self.expanded_spin.setValue(int(s["expanded_apply"]))
         self.review_spin.setValue(int(s["review"]))
+        self.manual_queue_spin.setValue(int(s["manual_queue_min"]))
 
         self.cv_edit.setText(str(s["cv_path"]))
         self.profile_edit.setText(str(s["browser_profile"]))
@@ -1104,6 +1107,7 @@ class JobAgentWindow(QMainWindow):
             "entry_apply": self.entry_spin.value(),
             "expanded_apply": self.expanded_spin.value(),
             "review": self.review_spin.value(),
+            "manual_queue_min": self.manual_queue_spin.value(),
             "cv_path": self.cv_edit.text().strip(),
             "browser_profile": self.profile_edit.text().strip(),
             "update_channel": self.channel_combo.currentText().strip(),
@@ -1137,6 +1141,9 @@ class JobAgentWindow(QMainWindow):
 
         if s["review"] > s["min_apply"]:
             return "REVIEW threshold should not exceed target APPLY threshold."
+
+        if not (s["review"] <= s["manual_queue_min"] <= s["min_apply"]):
+            return "Manual queue threshold should be between REVIEW and target APPLY thresholds."
 
         return ""
 
