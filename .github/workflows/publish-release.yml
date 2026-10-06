@@ -288,5 +288,6 @@ jobs:
             echo "No repository metadata changes."
           else
             git commit -m "Publish Job Agent v$VERSION"
+            git pull --rebase origin main
             git push
           fi
