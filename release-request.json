@@ -1,12 +1,10 @@
 {
-  "publish": false,
-  "request_id": 8,
-  "version": "2.3.1",
+  "publish": true,
+  "request_id": 9,
+  "version": "2.4.0",
   "channel": "beta",
-  "min_version": "2.3.0",
+  "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Fix Jobs.cz microsite email autofill by adding semantic email-field detection using labels, placeholders, aria metadata and nearby field text. Diagnostics now include the email field source. Manual queue behavior and manual final Submit safety remain unchanged.",
-  "last_published": "2.3.1",
-  "last_sha256": "8da7e386d913f0a236b1a982ae21fefad84467cacd9a278b6fa32ae6863947c9"
+  "notes": "Desktop 2.4.0 improves Czech cover-letter handling on Jobs.cz and similar forms. It can safely reveal optional cover/motivation/message fields only from explicit cover-letter controls, supports textarea and rich-text editors with stricter semantic matching, and adds Show/Copy cover-letter actions in Dashboard. Final employer Submit remains manual."
 }
