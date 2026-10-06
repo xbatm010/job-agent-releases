@@ -1,0 +1,292 @@
+name: Publish Job Agent release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - release-request.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: job-agent-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.request.outputs.publish }}
+      version: ${{ steps.request.outputs.version }}
+      channel: ${{ steps.request.outputs.channel }}
+      min_version: ${{ steps.request.outputs.min_version }}
+      source_url: ${{ steps.request.outputs.source_url }}
+      source_sha256: ${{ steps.request.outputs.source_sha256 }}
+      notes_b64: ${{ steps.request.outputs.notes_b64 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: request
+        name: Validate release request
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, re
+          from pathlib import Path
+
+          req = json.loads(Path("release-request.json").read_text(encoding="utf-8"))
+          publish = bool(req.get("publish", False))
+          version = str(req.get("version", "")).strip()
+          channel = str(req.get("channel", "stable")).strip()
+          min_version = str(req.get("min_version", "")).strip()
+          source_url = str(req.get("base_source_url", "")).strip()
+          source_sha = str(req.get("base_source_sha256", "")).strip().lower()
+          notes = str(req.get("notes", "")).strip()
+
+          if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version):
+              raise SystemExit(f"Invalid version: {version!r}")
+          if channel not in {"stable", "beta"}:
+              raise SystemExit(f"Invalid channel: {channel!r}")
+          if source_url and not source_url.startswith("https://github.com/xbatm010/job-agent-releases/"):
+              raise SystemExit("Bootstrap source URL must be hosted in xbatm010/job-agent-releases")
+          if source_url and not re.fullmatch(r"[0-9a-f]{64}", source_sha):
+              raise SystemExit("Bootstrap source requires a valid SHA-256")
+
+          out = Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"publish={'true' if publish else 'false'}\n")
+              fh.write(f"version={version}\n")
+              fh.write(f"channel={channel}\n")
+              fh.write(f"min_version={min_version}\n")
+              fh.write(f"source_url={source_url}\n")
+              fh.write(f"source_sha256={source_sha}\n")
+              fh.write("notes_b64=" + base64.b64encode(notes.encode()).decode() + "\n")
+          PY
+
+  build_publish:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: macos-14
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      MIN_VERSION: ${{ needs.prepare.outputs.min_version }}
+      SOURCE_URL: ${{ needs.prepare.outputs.source_url }}
+      SOURCE_SHA256: ${{ needs.prepare.outputs.source_sha256 }}
+      NOTES_B64: ${{ needs.prepare.outputs.notes_b64 }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf buildsrc
+          mkdir -p buildsrc
+
+          if [ -n "$SOURCE_URL" ]; then
+            echo "Bootstrapping sanitized source from release asset"
+            curl --fail --location --retry 3 "$SOURCE_URL" -o source.zip
+            ACTUAL=$(shasum -a 256 source.zip | awk '{print $1}')
+            if [ "$ACTUAL" != "$SOURCE_SHA256" ]; then
+              echo "Source SHA-256 mismatch"
+              echo "Expected: $SOURCE_SHA256"
+              echo "Actual:   $ACTUAL"
+              exit 1
+            fi
+            /usr/bin/ditto -x -k source.zip buildsrc
+          else
+            if [ ! -d source ]; then
+              echo "No persistent source/ directory exists."
+              exit 1
+            fi
+            /usr/bin/ditto source buildsrc
+          fi
+
+          rm -rf buildsrc/__pycache__ buildsrc/build buildsrc/dist
+
+          test -f buildsrc/desktop.py
+          test -f buildsrc/main.py
+          test -f buildsrc/updater.py
+          test -f buildsrc/requirements-desktop.txt
+          test -f buildsrc/version.json
+
+      - name: Privacy guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find buildsrc -type f \( -iname '*.pdf' -o -iname '*.doc' -o -iname '*.docx' \) | grep -q .; then
+            echo "Public source must not contain CV/document files."
+            exit 1
+          fi
+
+          if grep -R -I -n -E 'madiyar\.batanov|777[[:space:]]*55[[:space:]]*44|CV_Madiyar' buildsrc; then
+            echo "Personal-data privacy guard failed."
+            exit 1
+          fi
+
+      - name: Normalize release version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path("buildsrc/version.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          data["version"] = os.environ["VERSION"]
+          data["channel"] = os.environ["CHANNEL"]
+          p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: 'arm64'
+          cache: 'pip'
+          cache-dependency-path: buildsrc/requirements-desktop.txt
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip wheel
+          python -m pip install -r buildsrc/requirements-desktop.txt
+
+      - name: Build arm64 macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd buildsrc
+
+          python -m PyInstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --target-arch arm64 \
+            --name "Job Agent" \
+            --osx-bundle-identifier "local.jobagent.desktop" \
+            --hidden-import main \
+            --hidden-import updater \
+            --hidden-import playwright \
+            --hidden-import playwright.async_api \
+            --hidden-import playwright.sync_api \
+            --hidden-import certifi \
+            --collect-data certifi \
+            --copy-metadata playwright \
+            --add-data ".env.example:." \
+            --add-data "version.json:." \
+            desktop.py
+
+          /usr/bin/codesign --force --deep --sign - "dist/Job Agent.app"
+          /usr/bin/codesign --verify --deep --strict "dist/Job Agent.app"
+          file "dist/Job Agent.app/Contents/MacOS/Job Agent"
+
+      - name: Package and hash
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          ZIP="release/job-agent-${VERSION}-macos.zip"
+          rm -f "$ZIP"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "buildsrc/dist/Job Agent.app" "$ZIP"
+          SHA=$(shasum -a 256 "$ZIP" | awk '{print $1}')
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA256=$SHA"
+
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          notes = base64.b64decode(os.environ["NOTES_B64"]).decode("utf-8")
+          Path("release-notes.txt").write_text(notes + "\n", encoding="utf-8")
+          PY
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          ZIP: ${{ steps.package.outputs.zip }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber --repo "${GITHUB_REPOSITORY}"
+          else
+            gh release create "$TAG" "$ZIP" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "Job Agent Desktop $VERSION" \
+              --notes-file release-notes.txt
+          fi
+
+      - name: Persist sanitized source and update manifest
+        shell: bash
+        env:
+          RELEASE_SHA256: ${{ steps.package.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+
+          rm -rf source
+          mkdir -p source
+
+          for f in desktop.py main.py updater.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md update_manifest.example.json; do
+            if [ -f "buildsrc/$f" ]; then
+              cp "buildsrc/$f" "source/$f"
+            fi
+          done
+
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          channel = os.environ["CHANNEL"]
+          sha = os.environ["RELEASE_SHA256"]
+          notes = __import__("base64").b64decode(os.environ["NOTES_B64"]).decode("utf-8")
+
+          manifest_path = Path("manifest.json")
+          if manifest_path.exists():
+              manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          else:
+              manifest = {"schema": 1, "releases": {}}
+
+          manifest.setdefault("releases", {})[channel] = {
+              "version": version,
+              "url": (
+                  "https://github.com/xbatm010/job-agent-releases/"
+                  f"releases/download/v{version}/job-agent-{version}-macos.zip"
+              ),
+              "sha256": sha,
+              "notes": notes,
+              "min_version": os.environ["MIN_VERSION"],
+          }
+          manifest_path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+
+          req_path = Path("release-request.json")
+          req = json.loads(req_path.read_text(encoding="utf-8"))
+          req["publish"] = False
+          req["last_published"] = version
+          req["last_sha256"] = sha
+          req["base_source_url"] = ""
+          req["base_source_sha256"] = ""
+          req_path.write_text(
+              json.dumps(req, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json release-request.json source
+
+          if git diff --cached --quiet; then
+            echo "No repository metadata changes."
+          else
+            git commit -m "Publish Job Agent v$VERSION"
+            git push
+          fi
