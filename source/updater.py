@@ -69,7 +69,7 @@ def read_manifest(url: str, channel: str, timeout=12):
     if not url:
         raise ValueError("Update manifest URL is not configured.")
 
-    req = urllib.request.Request(url, headers={"User-Agent": "JobAgentDesktop/2.1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "JobAgentDesktop/2.1.1"})
     with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
 
@@ -102,7 +102,7 @@ def download_update(info: UpdateInfo, progress_cb=None) -> Path:
     target = DOWNLOAD_DIR / f"job-agent-{info.version}.zip"
     temp = target.with_suffix(".download")
 
-    req = urllib.request.Request(info.url, headers={"User-Agent": "JobAgentDesktop/2.1.0"})
+    req = urllib.request.Request(info.url, headers={"User-Agent": "JobAgentDesktop/2.1.1"})
     with urllib.request.urlopen(req, timeout=30, context=ssl_context()) as resp, temp.open("wb") as fh:
         total = int(resp.headers.get("Content-Length") or 0)
         done = 0
@@ -172,15 +172,30 @@ def find_app_in_zip(zip_path: Path) -> str:
 
 
 def extract_app(zip_path: Path) -> Path:
+    """
+    Extract a macOS .app without destroying symlinks/framework layout.
+
+    Python's zipfile extractor does not faithfully preserve all macOS bundle
+    metadata and symlink semantics. Update archives are created with ditto, so
+    on macOS they must also be extracted with ditto.
+    """
     app_entry = find_app_in_zip(zip_path)
     temp_root = Path(tempfile.mkdtemp(prefix="job-agent-update-"))
-    with zipfile.ZipFile(zip_path) as z:
-        prefix = app_entry.rstrip("/") + "/"
-        for member in z.namelist():
-            if member == app_entry or member.startswith(prefix):
-                z.extract(member, temp_root)
+
+    if sys.platform == "darwin":
+        subprocess.run(
+            ["/usr/bin/ditto", "-x", "-k", str(zip_path), str(temp_root)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    else:
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(temp_root)
+
     app_path = temp_root / app_entry
-    if not app_path.exists():
+    if not app_path.exists() or not app_path.is_dir():
         raise ValueError("Failed to extract .app bundle.")
     return app_path
 
@@ -214,7 +229,7 @@ if [ -d "$CURRENT_APP" ]; then
 fi
 
 if mv "$NEW_APP" "$CURRENT_APP"; then
-  rm -rf "$BACKUP_APP" || true
+  :
 else
   if [ -d "$BACKUP_APP" ]; then
     mv "$BACKUP_APP" "$CURRENT_APP"
