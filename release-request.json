@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 5,
   "version": "2.2.0",
   "channel": "beta",
   "min_version": "2.1.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.2.0 adds a Vacancy Dashboard and Applications history. It shows score, position, company, decision and status; provides job details, Open job, Apply manually, REVIEW, Interesting, Skip and cover-letter actions; stores richer vacancy snapshots locally; and lets REVIEW/SKIP overrides affect future runs while final employer submission remains manual."
+  "notes": "Desktop 2.2.0 adds a Vacancy Dashboard and Applications history. It shows score, position, company, decision and status; provides job details, Open job, Apply manually, REVIEW, Interesting, Skip and cover-letter actions; stores richer vacancy snapshots locally; and lets REVIEW/SKIP overrides affect future runs while final employer submission remains manual.",
+  "last_published": "2.2.0",
+  "last_sha256": "e6b75f0132588b8a940fef59176bcc2f4d78f9960a1697f3bc25917b1a2fcc32"
 }
