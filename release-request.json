@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 8,
   "version": "2.3.1",
   "channel": "beta",
   "min_version": "2.3.0",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Fix Jobs.cz microsite email autofill by adding semantic email-field detection using labels, placeholders, aria metadata and nearby field text. Diagnostics now include the email field source. Manual queue behavior and manual final Submit safety remain unchanged."
+  "notes": "Fix Jobs.cz microsite email autofill by adding semantic email-field detection using labels, placeholders, aria metadata and nearby field text. Diagnostics now include the email field source. Manual queue behavior and manual final Submit safety remain unchanged.",
+  "last_published": "2.3.1",
+  "last_sha256": "8da7e386d913f0a236b1a982ae21fefad84467cacd9a278b6fa32ae6863947c9"
 }

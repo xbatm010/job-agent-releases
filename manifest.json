@@ -9,11 +9,11 @@
       "min_version": "2.2.0"
     },
     "beta": {
-      "version": "2.3.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.3.0/job-agent-2.3.0-macos.zip",
-      "sha256": "d4d92eb497b929485975b7c920a2c5639fbd73c43f62557927228a306f245b78",
-      "notes": "Desktop 2.3.0 adds a guarded manual application queue for REVIEW vacancies. From Dashboard, REVIEW jobs meeting the manual queue floor can be queued for next-run application preparation without lowering global APPLY thresholds. The agent re-checks strong evidence, allowed location and 3+ years experience blockers before promotion, and final employer Submit remains manual.",
-      "min_version": "2.2.1"
+      "version": "2.3.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.3.1/job-agent-2.3.1-macos.zip",
+      "sha256": "8da7e386d913f0a236b1a982ae21fefad84467cacd9a278b6fa32ae6863947c9",
+      "notes": "Fix Jobs.cz microsite email autofill by adding semantic email-field detection using labels, placeholders, aria metadata and nearby field text. Diagnostics now include the email field source. Manual queue behavior and manual final Submit safety remain unchanged.",
+      "min_version": "2.3.0"
     }
   }
 }
