@@ -3061,6 +3061,50 @@ async def fill_semantic_name(page, kind, value):
         return False, f"{meta} | fill_failed:{type(exc).__name__}"
 
 
+async def fill_email_adaptive(page):
+    """
+    Fill an email field by semantic metadata when the ATS uses type=text or
+    opaque generated names/ids. We require email-like label/placeholder/
+    surrounding text and never guess by input position.
+    """
+    candidate = await find_semantic_input(
+        page,
+        keywords=[
+            "email",
+            "e-mail",
+            "e mail",
+            "email address",
+            "e-mail address",
+            "emailová adresa",
+            "emailova adresa",
+            "mail",
+        ],
+        negative=[
+            "phone",
+            "telefon",
+            "mobile",
+            "first name",
+            "last name",
+            "surname",
+            "jmeno",
+            "prijmeni",
+        ],
+    )
+    if candidate is None:
+        return False, ""
+
+    _, _, el, meta = candidate
+    try:
+        await el.fill(CANDIDATE["email"])
+        await el.press("Tab")
+        await page.wait_for_timeout(150)
+        actual = (await el.input_value() or "").strip()
+        ok = actual.lower() == CANDIDATE["email"].lower()
+        return ok, meta
+    except Exception as exc:
+        return False, f"{meta} | fill_failed:{type(exc).__name__}"
+
+
 async def fill_phone_adaptive(page):
     candidate = await find_semantic_input(
         page,
@@ -4082,6 +4126,7 @@ async def inspect_form(page, job=None):
         "last_name": False,
         "last_name_source": "",
         "email": False,
+        "email_source": "",
         "phone": False,
         "phone_present": False,
         "phone_source": "",
@@ -4146,10 +4191,11 @@ async def inspect_form(page, job=None):
         'input[id*="příjmen" i]',
     ], CANDIDATE["last_name"])
 
-    await fill_any([
+    email_frame, email_sel = await fill_any([
         'input[type="email"]',
         'input[name*="email" i]',
         'input[id*="email" i]',
+        'input[autocomplete="email"]',
     ], CANDIDATE["email"])
 
     # Phone: first use known selectors, then semantic fallback.
@@ -4238,6 +4284,7 @@ async def inspect_form(page, job=None):
         'input[type="email"]',
         'input[name*="email" i]',
         'input[id*="email" i]',
+        'input[autocomplete="email"]',
     ])
 
     result["first_name"] = (
@@ -4270,7 +4317,17 @@ async def inspect_form(page, job=None):
             CANDIDATE["last_name"],
         )
 
-    result["email"] = CANDIDATE["email"].lower() in email_val.lower()
+    result["email"] = (
+        bool(CANDIDATE["email"])
+        and CANDIDATE["email"].lower() == (email_val or "").strip().lower()
+    )
+    if result["email"]:
+        result["email_source"] = email_sel or "known_selector"
+    else:
+        (
+            result["email"],
+            result["email_source"],
+        ) = await fill_email_adaptive(page)
 
     # Submit detection.
     for frame in await page_contexts(page):
@@ -6207,7 +6264,7 @@ def print_application_result(index, total, target, status, reason, current_url, 
             f"[{clean(form.get('first_name_source', ''))[:80] or '-'}], "
             f"last_name={'YES' if form.get('last_name') else 'NO'}"
             f"[{clean(form.get('last_name_source', ''))[:80] or '-'}], "
-            f"email={'YES' if form.get('email') else 'NO'}, "
+            f"email={'YES' if form.get('email') else 'NO'}[{form.get('email_source', '')}], "
             f"phone={'YES' if form.get('phone') else 'NO'}"
             f"[{form.get('phone_source') or '-'};present="
             f"{'YES' if form.get('phone_present') else 'NO'}], "
