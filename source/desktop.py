@@ -81,10 +81,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.3.0", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.3.1", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
