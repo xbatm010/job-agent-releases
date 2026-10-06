@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 6,
   "version": "2.2.1",
   "channel": "beta",
   "min_version": "2.2.0",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Fix Desktop 2.2 Dashboard crash caused by a missing time import when saving vacancy snapshots. The release pipeline now runs a dashboard-persistence smoke test before building and publishing."
+  "notes": "Fix Desktop 2.2 Dashboard crash caused by a missing time import when saving vacancy snapshots. The release pipeline now runs a dashboard-persistence smoke test before building and publishing.",
+  "last_published": "2.2.1",
+  "last_sha256": "31b51f0fa3fde6f4b24333a26a6037da3ebf81c471ae103dcbe2a7370dfbb9d5"
 }
