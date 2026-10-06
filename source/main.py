@@ -1365,6 +1365,22 @@ def load_job_overrides():
         return {}
 
 
+def manual_review_apply_eligible(job, loc_allowed):
+    try:
+        score = int(job.get("score", 0))
+    except Exception:
+        score = 0
+
+    return (
+        str(job.get("decision", "")).upper() == "REVIEW"
+        and score >= MANUAL_REVIEW_APPLY_MIN_SCORE
+        and str(job.get("role_class", "")).lower() in {"target", "expanded"}
+        and str(job.get("evidence_quality", "")).lower() == "strong"
+        and not bool(job.get("hard_experience"))
+        and loc_allowed is True
+    )
+
+
 def save_status(job, status, score, reason):
     p = APPLICATIONS_FILE
     exists = p.exists()
