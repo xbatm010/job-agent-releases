@@ -2,11 +2,11 @@
   "schema": 1,
   "releases": {
     "stable": {
-      "version": "2.0.1",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.0.1/job-agent-2.0.1-macos.zip",
-      "sha256": "b3badc042205c848373af774b388dc7e6c5401718a42efd8faa53c68a72d1ff5",
-      "notes": "Playwright browser cache fix and automatic update support.",
-      "min_version": "2.0.0"
+      "version": "2.0.2",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.0.2/job-agent-2.0.2-macos.zip",
+      "sha256": "eeb17dd77c515b9b24baa5a01f4488a432b63364a4cd6480ef79c564e09d36c4",
+      "notes": "Built-in GitHub update source and automatic update checks.",
+      "min_version": "2.0.1"
     }
   }
 }
