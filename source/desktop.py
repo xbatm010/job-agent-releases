@@ -774,14 +774,14 @@ class JobAgentWindow(QMainWindow):
 
         dash_buttons = QHBoxLayout()
         self.open_job_btn = QPushButton("Open job")
-        self.manual_apply_btn = QPushButton("Apply manually")
+        self.manual_apply_btn = QPushButton("Queue application")
         self.review_override_btn = QPushButton("Set REVIEW")
         self.interesting_btn = QPushButton("Mark interesting")
         self.skip_job_btn = QPushButton("Skip")
         self.cover_letter_btn = QPushButton("Show cover letter")
 
         self.open_job_btn.clicked.connect(self._open_selected_job)
-        self.manual_apply_btn.clicked.connect(self._manual_apply_selected)
+        self.manual_apply_btn.clicked.connect(self._queue_selected_application)
         self.review_override_btn.clicked.connect(
             lambda: self._set_selected_override("REVIEW")
         )
@@ -1012,17 +1012,55 @@ class JobAgentWindow(QMainWindow):
             return
         QDesktopServices.openUrl(QUrl(url))
 
-    def _manual_apply_selected(self):
+    def _queue_selected_application(self):
         record = self._selected_dashboard_record()
         if not record:
             return
-        # This intentionally never submits anything automatically.
+
+        try:
+            score = int(float(record.get("score", 0) or 0))
+        except Exception:
+            score = 0
+
+        floor = self.manual_queue_spin.value()
+        base_decision = str(record.get("decision", "")).upper().strip()
+
+        if base_decision != "REVIEW":
+            QMessageBox.information(
+                self,
+                "Queue application",
+                "Only vacancies currently classified as REVIEW can be queued manually.",
+            )
+            return
+
+        if score < floor:
+            QMessageBox.information(
+                self,
+                "Queue application",
+                f"This vacancy has score {score}. Manual queue requires at least {floor}.",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Queue application",
+            "Queue this REVIEW vacancy for application preparation on the next run?\n\n"
+            "The agent will re-check strong evidence, location and experience blockers. "
+            "Final employer Submit will still require your manual action.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
         write_job_override(
             str(record.get("job_id", "")),
-            "INTERESTING",
+            "MANUAL_APPLY",
         )
         self._refresh_dashboard()
-        self._open_selected_job()
+        self._append_log(
+            f"Manual queue: {record.get('title', '')} → next-run preparation"
+        )
 
     def _set_selected_override(self, decision):
         record = self._selected_dashboard_record()
