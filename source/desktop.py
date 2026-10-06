@@ -9,8 +9,8 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt, Signal, QThread, QObject, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QTimer, Qt, Signal, QThread, QObject, Slot, QUrl
+from PySide6.QtGui import QFont, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -30,6 +30,10 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QSplitter,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QAbstractItemView,
+    QHeaderView,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -77,10 +81,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.1.1", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.2.0", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.2.0"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -106,6 +110,8 @@ RUNTIME_DIR = APP_DIR / "runtime"
 RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_PROFILE_DIR = APP_DIR / "browser_profile"
 HISTORY_FILE = Path.home() / ".job_agent" / "applications.csv"
+VACANCIES_FILE = Path.home() / ".job_agent" / "vacancies.jsonl"
+OVERRIDES_FILE = Path.home() / ".job_agent" / "job_overrides.json"
 
 
 def resource_path(name: str) -> Path:
@@ -199,6 +205,74 @@ def processed_count() -> int:
     except Exception:
         return 0
     return len(unique)
+
+
+def load_vacancy_records() -> list[dict]:
+    latest = {}
+
+    if VACANCIES_FILE.exists():
+        try:
+            with VACANCIES_FILE.open("r", encoding="utf-8") as fh:
+                for raw in fh:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        row = json.loads(raw)
+                    except Exception:
+                        continue
+                    jid = str(row.get("job_id", "")).strip()
+                    if jid:
+                        latest[jid] = row
+        except Exception:
+            pass
+
+    # Backward-compatible fallback for jobs recorded before Desktop 2.2.
+    if HISTORY_FILE.exists():
+        try:
+            with HISTORY_FILE.open("r", encoding="utf-8", newline="") as fh:
+                for row in csv.DictReader(fh):
+                    jid = str(row.get("job_id", "")).strip()
+                    if not jid:
+                        continue
+                    if jid not in latest:
+                        latest[jid] = dict(row)
+        except Exception:
+            pass
+
+    def sort_key(row):
+        try:
+            score = int(float(row.get("score", 0) or 0))
+        except Exception:
+            score = 0
+        return (-score, str(row.get("title", "")).lower())
+
+    return sorted(latest.values(), key=sort_key)
+
+
+def load_job_overrides() -> dict:
+    if not OVERRIDES_FILE.exists():
+        return {}
+    try:
+        data = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_job_override(job_id: str, decision: str) -> None:
+    if not job_id:
+        return
+    OVERRIDES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    data = load_job_overrides()
+    data[job_id] = {
+        "decision": decision,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    OVERRIDES_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 class QueueWriter(io.TextIOBase):
@@ -395,6 +469,7 @@ class JobAgentWindow(QMainWindow):
         self.update_thread = None
         self.update_worker = None
         self.available_update = None
+        self.dashboard_records = []
 
         self._build_ui()
         self._load_widgets()
@@ -638,6 +713,148 @@ class JobAgentWindow(QMainWindow):
         right = QWidget()
         right_layout = QVBoxLayout(right)
 
+        self.workspace_tabs = QTabWidget()
+        right_layout.addWidget(self.workspace_tabs, 1)
+
+        # Dashboard ---------------------------------------------------------
+        dashboard_page = QWidget()
+        dashboard_layout = QVBoxLayout(dashboard_page)
+
+        dash_header = QHBoxLayout()
+        dash_title = QLabel("Vacancy Dashboard")
+        dash_font = QFont()
+        dash_font.setBold(True)
+        dash_title.setFont(dash_font)
+        dash_header.addWidget(dash_title)
+        dash_header.addStretch()
+        self.dashboard_count = QLabel("0 jobs")
+        self.refresh_dashboard_btn = QPushButton("Refresh")
+        self.refresh_dashboard_btn.clicked.connect(self._refresh_dashboard)
+        dash_header.addWidget(self.dashboard_count)
+        dash_header.addWidget(self.refresh_dashboard_btn)
+        dashboard_layout.addLayout(dash_header)
+
+        self.dashboard_table = QTableWidget(0, 5)
+        self.dashboard_table.setHorizontalHeaderLabels(
+            ["Score", "Position", "Company", "Decision", "Status"]
+        )
+        self.dashboard_table.setSelectionBehavior(
+            QAbstractItemView.SelectRows
+        )
+        self.dashboard_table.setSelectionMode(
+            QAbstractItemView.SingleSelection
+        )
+        self.dashboard_table.setEditTriggers(
+            QAbstractItemView.NoEditTriggers
+        )
+        self.dashboard_table.verticalHeader().setVisible(False)
+        self.dashboard_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.dashboard_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self.dashboard_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.Stretch
+        )
+        self.dashboard_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents
+        )
+        self.dashboard_table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeToContents
+        )
+        self.dashboard_table.itemSelectionChanged.connect(
+            self._dashboard_selection_changed
+        )
+        dashboard_layout.addWidget(self.dashboard_table, 2)
+
+        dash_buttons = QHBoxLayout()
+        self.open_job_btn = QPushButton("Open job")
+        self.manual_apply_btn = QPushButton("Apply manually")
+        self.review_override_btn = QPushButton("Set REVIEW")
+        self.interesting_btn = QPushButton("Mark interesting")
+        self.skip_job_btn = QPushButton("Skip")
+        self.cover_letter_btn = QPushButton("Show cover letter")
+
+        self.open_job_btn.clicked.connect(self._open_selected_job)
+        self.manual_apply_btn.clicked.connect(self._manual_apply_selected)
+        self.review_override_btn.clicked.connect(
+            lambda: self._set_selected_override("REVIEW")
+        )
+        self.interesting_btn.clicked.connect(
+            lambda: self._set_selected_override("INTERESTING")
+        )
+        self.skip_job_btn.clicked.connect(
+            lambda: self._set_selected_override("SKIP")
+        )
+        self.cover_letter_btn.clicked.connect(
+            self._show_selected_cover_letter
+        )
+
+        for button in [
+            self.open_job_btn,
+            self.manual_apply_btn,
+            self.review_override_btn,
+            self.interesting_btn,
+            self.skip_job_btn,
+            self.cover_letter_btn,
+        ]:
+            dash_buttons.addWidget(button)
+        dashboard_layout.addLayout(dash_buttons)
+
+        self.dashboard_detail = QTextEdit()
+        self.dashboard_detail.setReadOnly(True)
+        self.dashboard_detail.setPlaceholderText(
+            "Select a vacancy to see details."
+        )
+        dashboard_layout.addWidget(self.dashboard_detail, 1)
+        self.workspace_tabs.addTab(dashboard_page, "Dashboard")
+
+        # Applications history --------------------------------------------
+        applications_page = QWidget()
+        applications_layout = QVBoxLayout(applications_page)
+
+        app_header = QHBoxLayout()
+        app_title = QLabel("Applications history")
+        app_title.setFont(dash_font)
+        app_header.addWidget(app_title)
+        app_header.addStretch()
+        self.applications_count = QLabel("0")
+        app_header.addWidget(self.applications_count)
+        applications_layout.addLayout(app_header)
+
+        self.applications_table = QTableWidget(0, 5)
+        self.applications_table.setHorizontalHeaderLabels(
+            ["Score", "Position", "Company", "Decision", "Status"]
+        )
+        self.applications_table.setSelectionBehavior(
+            QAbstractItemView.SelectRows
+        )
+        self.applications_table.setEditTriggers(
+            QAbstractItemView.NoEditTriggers
+        )
+        self.applications_table.verticalHeader().setVisible(False)
+        self.applications_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeToContents
+        )
+        self.applications_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.Stretch
+        )
+        self.applications_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.Stretch
+        )
+        self.applications_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeToContents
+        )
+        self.applications_table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeToContents
+        )
+        applications_layout.addWidget(self.applications_table, 1)
+        self.workspace_tabs.addTab(applications_page, "Applications")
+
+        # Live log --------------------------------------------------------
+        log_page = QWidget()
+        log_layout = QVBoxLayout(log_page)
         log_header = QHBoxLayout()
         log_title = QLabel("Live log")
         lf = QFont()
@@ -649,7 +866,7 @@ class JobAgentWindow(QMainWindow):
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(lambda: self.log.clear())
         log_header.addWidget(clear_btn)
-        right_layout.addLayout(log_header)
+        log_layout.addLayout(log_header)
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -657,10 +874,178 @@ class JobAgentWindow(QMainWindow):
         mono.setStyleHint(QFont.Monospace)
         mono.setPointSize(11)
         self.log.setFont(mono)
-        right_layout.addWidget(self.log, 1)
+        log_layout.addWidget(self.log, 1)
+        self.workspace_tabs.addTab(log_page, "Live log")
 
         splitter.addWidget(right)
         splitter.setSizes([390, 660])
+
+    def _selected_dashboard_record(self):
+        row = self.dashboard_table.currentRow()
+        if row < 0 or row >= len(self.dashboard_records):
+            return None
+        return self.dashboard_records[row]
+
+    def _dashboard_selection_changed(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            self.dashboard_detail.clear()
+            return
+
+        override = load_job_overrides().get(
+            str(record.get("job_id", "")),
+            {},
+        )
+        override_decision = str(override.get("decision", "")).strip()
+
+        details = [
+            f"Position: {record.get('title', '')}",
+            f"Company: {record.get('company', '')}",
+            f"Score: {record.get('score', '')}",
+            f"Decision: {record.get('decision', '')}",
+            f"Status: {record.get('status', '')}",
+            f"Role class: {record.get('role_class', '')}",
+            f"Source: {record.get('source', '')}",
+            f"Location: {record.get('location', '')}",
+        ]
+        if override_decision:
+            details.append(f"Desktop override: {override_decision}")
+        if record.get("reason"):
+            details.extend(["", "Reason:", str(record.get("reason", ""))])
+        if record.get("description"):
+            details.extend(
+                ["", "Description:", str(record.get("description", ""))]
+            )
+
+        self.dashboard_detail.setPlainText("\n".join(details))
+
+    def _refresh_dashboard(self):
+        selected_id = ""
+        selected = self._selected_dashboard_record()
+        if selected:
+            selected_id = str(selected.get("job_id", ""))
+
+        self.dashboard_records = load_vacancy_records()
+        overrides = load_job_overrides()
+
+        self.dashboard_table.setRowCount(len(self.dashboard_records))
+        restore_row = -1
+
+        for row_index, record in enumerate(self.dashboard_records):
+            jid = str(record.get("job_id", ""))
+            override = str(
+                overrides.get(jid, {}).get("decision", "")
+            ).strip()
+            decision = override or str(record.get("decision", ""))
+
+            values = [
+                str(record.get("score", "")),
+                str(record.get("title", "")),
+                str(record.get("company", "")),
+                decision,
+                str(record.get("status", "")),
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.UserRole, jid)
+                self.dashboard_table.setItem(row_index, col, item)
+
+            if jid and jid == selected_id:
+                restore_row = row_index
+
+        self.dashboard_count.setText(
+            f"{len(self.dashboard_records)} jobs"
+        )
+
+        application_records = [
+            r for r in self.dashboard_records
+            if str(r.get("status", "")) not in {
+                "",
+                "REVIEW_PENDING",
+                "SKIPPED",
+            }
+        ]
+        self.applications_table.setRowCount(len(application_records))
+        for row_index, record in enumerate(application_records):
+            jid = str(record.get("job_id", ""))
+            override = str(
+                overrides.get(jid, {}).get("decision", "")
+            ).strip()
+            decision = override or str(record.get("decision", ""))
+            values = [
+                str(record.get("score", "")),
+                str(record.get("title", "")),
+                str(record.get("company", "")),
+                decision,
+                str(record.get("status", "")),
+            ]
+            for col, value in enumerate(values):
+                self.applications_table.setItem(
+                    row_index,
+                    col,
+                    QTableWidgetItem(value),
+                )
+        self.applications_count.setText(str(len(application_records)))
+
+        if restore_row >= 0:
+            self.dashboard_table.selectRow(restore_row)
+        elif self.dashboard_records and self.dashboard_table.currentRow() < 0:
+            self.dashboard_table.selectRow(0)
+        else:
+            self._dashboard_selection_changed()
+
+    def _open_selected_job(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        url = str(record.get("url", "")).strip()
+        if not url:
+            QMessageBox.information(
+                self,
+                "Vacancy",
+                "No vacancy URL is available for this record.",
+            )
+            return
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _manual_apply_selected(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        # This intentionally never submits anything automatically.
+        write_job_override(
+            str(record.get("job_id", "")),
+            "INTERESTING",
+        )
+        self._refresh_dashboard()
+        self._open_selected_job()
+
+    def _set_selected_override(self, decision):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        write_job_override(
+            str(record.get("job_id", "")),
+            str(decision).upper(),
+        )
+        self._refresh_dashboard()
+        self._append_log(
+            f"Dashboard override: {record.get('title', '')} → {decision}"
+        )
+
+    def _show_selected_cover_letter(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        letter = str(record.get("cover_letter", "")).strip()
+        if not letter:
+            QMessageBox.information(
+                self,
+                "Cover letter",
+                "No saved cover letter is available for this vacancy yet.",
+            )
+            return
+        self.dashboard_detail.setPlainText(letter)
 
     def _score_spin(self):
         w = QSpinBox()
@@ -1023,6 +1408,7 @@ class JobAgentWindow(QMainWindow):
 
     def _refresh_stats(self):
         self.processed_value.setText(str(processed_count()))
+        self._refresh_dashboard()
         if playwright_browser_present():
             self.browser_status_value.setText("Ready")
             self.browser_status_value.setStyleSheet("color: #227722; font-weight: 700;")
