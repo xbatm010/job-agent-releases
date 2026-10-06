@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "releases": {
+    "stable": {
+      "version": "2.1.0",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.1.0/job-agent-2.1.0-macos.zip",
+      "sha256": "AUTOMATED_BY_GITHUB_ACTIONS",
+      "notes": "Automated GitHub Actions release.",
+      "min_version": "2.0.3"
+    }
+  }
+}

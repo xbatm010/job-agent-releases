@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 3,
   "version": "2.1.0",
   "channel": "stable",
   "min_version": "2.0.3",
-  "base_source_url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.0.3/job-agent-source-2.1.0.zip",
-  "base_source_sha256": "7525cd62e9ae9fe7aa461650940a388a2a3a6d9a84af6faae57a8b7e1b4672ad",
-  "notes": "Desktop 2.1.0 introduces a local Profile tab and the automated GitHub Actions release pipeline. Personal contact data and CV are no longer part of the public source bundle."
+  "base_source_url": "",
+  "base_source_sha256": "",
+  "notes": "Desktop 2.1.0 introduces a local Profile tab and the automated GitHub Actions release pipeline. Personal contact data and CV are no longer part of the public source bundle.",
+  "last_published": "2.1.0",
+  "last_sha256": "d83a812b50d7178a02c9779ffdcc276cf0033687e0961b186d6b31427d82eb06"
 }

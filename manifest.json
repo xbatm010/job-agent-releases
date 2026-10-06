@@ -2,11 +2,11 @@
   "schema": 1,
   "releases": {
     "stable": {
-      "version": "2.0.3",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.0.3/job-agent-2.0.3-macos.zip",
-      "sha256": "b8adae225752ed5adf4cb17cc69989c421fd8ead034ee9f2b8764c92509e61dd",
-      "notes": "Fix HTTPS certificate verification in the macOS updater using the bundled certifi CA store.",
-      "min_version": "2.0.2"
+      "version": "2.1.0",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.1.0/job-agent-2.1.0-macos.zip",
+      "sha256": "d83a812b50d7178a02c9779ffdcc276cf0033687e0961b186d6b31427d82eb06",
+      "notes": "Desktop 2.1.0 introduces a local Profile tab and the automated GitHub Actions release pipeline. Personal contact data and CV are no longer part of the public source bundle.",
+      "min_version": "2.0.3"
     }
   }
 }
