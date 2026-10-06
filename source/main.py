@@ -33,6 +33,7 @@ MANUAL_SUBMIT_WAIT_SECONDS = int(os.getenv("MANUAL_SUBMIT_WAIT_SECONDS", "600"))
 STATE_DIR = Path(os.path.expanduser(os.getenv("STATE_DIR", "~/.job_agent")))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 APPLICATIONS_FILE = STATE_DIR / "applications.csv"
+VACANCIES_FILE = STATE_DIR / "vacancies.jsonl"
 LOGIN_BOOTSTRAP = os.getenv("LOGIN_BOOTSTRAP", "true").lower() == "true"
 LOGIN_WAIT_SECONDS = int(os.getenv("LOGIN_WAIT_SECONDS", "240"))
 MANUAL_CV_FALLBACK = os.getenv("MANUAL_CV_FALLBACK", "true").lower() == "true"
@@ -1357,12 +1358,13 @@ def save_status(job, status, score, reason):
         "job_id", "title", "company", "url", "score",
         "role_class", "decision", "status", "reason"
     ]
+    canonical_id = canonical_history_key(job)
     with p.open("a", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         if not exists:
             w.writeheader()
         w.writerow({
-            "job_id": canonical_history_key(job),
+            "job_id": canonical_id,
             "title": job.get("actual_title") or job.get("title", ""),
             "company": job.get("company", ""),
             "url": job.get("url", ""),
@@ -1372,6 +1374,38 @@ def save_status(job, status, score, reason):
             "status": status,
             "reason": reason,
         })
+
+    # Rich local snapshot for Desktop Dashboard. This file stays on the user's
+    # Mac and is not uploaded to the public release repository.
+    snapshot = {
+        "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "job_id": canonical_id,
+        "title": job.get("actual_title") or job.get("title", ""),
+        "company": job.get("company", ""),
+        "url": job.get("url", ""),
+        "source": job.get("source", ""),
+        "location": job.get("location", ""),
+        "score": score,
+        "role_class": job.get("role_class", ""),
+        "decision": job.get("decision", ""),
+        "status": status,
+        "reason": reason,
+        "description": job.get("description", ""),
+        "reasons": job.get("reasons", []),
+    }
+    try:
+        if AUTO_CZECH_COVER_LETTER and snapshot["decision"] in {"APPLY", "REVIEW"}:
+            snapshot["cover_letter"] = generate_czech_cover_letter(job)
+        else:
+            snapshot["cover_letter"] = ""
+    except Exception:
+        snapshot["cover_letter"] = ""
+
+    try:
+        with VACANCIES_FILE.open("a", encoding="utf-8") as vf:
+            vf.write(json.dumps(snapshot, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 def discover_jobs_cz(session):
     if not SOURCE_JOBS_CZ:
