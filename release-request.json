@@ -1,12 +1,10 @@
 {
-  "publish": false,
-  "request_id": 6,
-  "version": "2.2.1",
+  "publish": true,
+  "request_id": 7,
+  "version": "2.3.0",
   "channel": "beta",
-  "min_version": "2.2.0",
+  "min_version": "2.2.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Fix Desktop 2.2 Dashboard crash caused by a missing time import when saving vacancy snapshots. The release pipeline now runs a dashboard-persistence smoke test before building and publishing.",
-  "last_published": "2.2.1",
-  "last_sha256": "31b51f0fa3fde6f4b24333a26a6037da3ebf81c471ae103dcbe2a7370dfbb9d5"
+  "notes": "Desktop 2.3.0 adds a guarded manual application queue for REVIEW vacancies. From Dashboard, REVIEW jobs meeting the manual queue floor can be queued for next-run application preparation without lowering global APPLY thresholds. The agent re-checks strong evidence, allowed location and 3+ years experience blockers before promotion, and final employer Submit remains manual."
 }
