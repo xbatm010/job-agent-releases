@@ -155,6 +155,40 @@ jobs:
           python -m pip install --upgrade pip wheel
           python -m pip install -r buildsrc/requirements-desktop.txt
 
+      - name: Smoke test dashboard persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile buildsrc/main.py buildsrc/desktop.py buildsrc/updater.py
+
+          STATE_DIR="$RUNNER_TEMP/job-agent-smoke" \
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path("buildsrc").resolve()))
+          import main
+
+          job = {
+              "job_id": "smoke-test",
+              "title": "Data Analyst",
+              "actual_title": "Data Analyst",
+              "company": "Example",
+              "url": "https://example.invalid/job",
+              "source": "smoke",
+              "location": "Praha",
+              "role_class": "target",
+              "decision": "REVIEW",
+              "description": "Smoke test",
+              "reasons": ["smoke"],
+          }
+          main.save_status(job, "REVIEW_PENDING", 65, "smoke")
+          assert main.APPLICATIONS_FILE.exists()
+          assert main.VACANCIES_FILE.exists()
+          print("Dashboard persistence smoke test: OK")
+          PY
+
       - name: Build arm64 macOS app
         shell: bash
         run: |
