@@ -99,7 +99,6 @@ ALLOW_SAME_HOST_REPLY_FALLBACK = os.getenv(
 ).lower() == "true"
 MIN_REVIEW_SCORE = int(os.getenv("MIN_REVIEW_SCORE", "55"))
 MANUAL_REVIEW_APPLY_MIN_SCORE = int(os.getenv("MANUAL_REVIEW_APPLY_MIN_SCORE", "65"))
-MAX_DISCOVERY_ITEMS = int(os.getenv("MAX_DISCOVERY_ITEMS", "30"))
 MAX_JOBS_TO_REVIEW = int(os.getenv("MAX_JOBS_TO_REVIEW", "36"))
 CV_PATH = os.getenv("CV_PATH", "").strip()
 BROWSER_PROFILE_DIR = os.getenv("BROWSER_PROFILE_DIR", "./browser_profile")
