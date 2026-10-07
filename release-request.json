@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 22,
   "version": "2.7.7",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Desktop 2.7.7 adds a safe manual-verification pause for Indeed discovery. When the visible Chromium window reaches an Indeed CAPTCHA/security challenge, Job Agent stops all automated interaction, leaves the persistent browser session open, and waits up to 300 seconds by default for the user to complete verification manually. Once the challenge disappears, discovery resumes automatically in the same verified session and continues through the remaining Indeed search queries. Interrupted challenge redirects are also detected and routed into the same manual pause instead of being misclassified as a reload loop. The agent never clicks, fills, solves, or bypasses CAPTCHA controls. All v2.7.6 scoring, CV handling, duplicate protection and manual final Submit safety remain unchanged.",
-  "last_published": "2.7.6",
-  "last_sha256": "4cf423eaa41c5b983d2b07da1fc70d44cc0705a7e99ff06341d7e4307004330b"
+  "last_published": "2.7.7",
+  "last_sha256": "b66ae241f4e7bb14fbb651c5e8c3b4f37f9536f41a5781ab52e371d91e875c27"
 }

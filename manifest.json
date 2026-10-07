@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.7.6",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.6/job-agent-2.7.6-macos.zip",
-      "sha256": "4cf423eaa41c5b983d2b07da1fc70d44cc0705a7e99ff06341d7e4307004330b",
-      "notes": "Desktop 2.7.6 improves adaptive CV attachment handling for Jobs.cz forms after a successful KPMG application required one manual CV-section reveal. The agent now recognizes additional compact custom upload controls (including span/summary, aria-expanded, upload/attachment/resume/cv classes), understands Czech actions such as Připojit/Vložit, and prefers the nearest semantic clickable ancestor before falling back to the text element itself. Large containers are ignored to avoid unsafe clicks. Legacy 'v32' CV log wording is replaced with version-neutral text. Scoring, Indeed CAPTCHA handling, duplicate protection, manual final Submit safety and all successful v2.7.5 behavior are unchanged.",
+      "version": "2.7.7",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.7/job-agent-2.7.7-macos.zip",
+      "sha256": "b66ae241f4e7bb14fbb651c5e8c3b4f37f9536f41a5781ab52e371d91e875c27",
+      "notes": "Desktop 2.7.7 adds a safe manual-verification pause for Indeed discovery. When the visible Chromium window reaches an Indeed CAPTCHA/security challenge, Job Agent stops all automated interaction, leaves the persistent browser session open, and waits up to 300 seconds by default for the user to complete verification manually. Once the challenge disappears, discovery resumes automatically in the same verified session and continues through the remaining Indeed search queries. Interrupted challenge redirects are also detected and routed into the same manual pause instead of being misclassified as a reload loop. The agent never clicks, fills, solves, or bypasses CAPTCHA controls. All v2.7.6 scoring, CV handling, duplicate protection and manual final Submit safety remain unchanged.",
       "min_version": "2.3.1"
     }
   }
