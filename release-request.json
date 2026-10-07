@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 17,
-  "version": "2.7.2",
+  "publish": true,
+  "request_id": 18,
+  "version": "2.7.3",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.7.2 hardens Indeed discovery and cleans StartupJobs previews. Browser evidence now detects Access Denied/CAPTCHA/security-challenge pages and refuses to overwrite a real vacancy title, company, location, description, or evidence with block-page content. Indeed discovery also performs an early semantic dedupe across duplicate jk variants before enrichment. StartupJobs search-card headings are split conservatively so company, salary, work-mode and location badges no longer pollute the vacancy title in discovery preview. StartupJobs.cz and Indeed.cz remain discovery-only; application preparation and final submission behavior are unchanged.",
+  "notes": "Desktop 2.7.3 improves first-job discovery and handles Indeed anti-bot challenges safely. Default scoring is recalibrated to target APPLY 66, verified target promotion 64, entry APPLY 62, expanded APPLY 70, expanded REVIEW 58 and REVIEW 55; untouched v2.7.2 Desktop defaults migrate automatically while custom thresholds are preserved. Data Analytics internships and selected AI/automation trainee/student roles are now discovered and can qualify only when strong vacancy evidence and concrete data-skill signals support them. Ranking logs now distinguish strong evidence verification from near-threshold promotion. Indeed Chromium discovery detects CAPTCHA/security pages and repeated navigation/reload loops, stops retries for the run, and never attempts to bypass human verification. StartupJobs.cz and Indeed.cz remain discovery-only, and final employer Submit remains manual.",
   "last_published": "2.7.2",
   "last_sha256": "b71dcf052c2aa711cc1081c6f68b05c4000ecde1615170878d5cb2b7b3cb6996"
 }
