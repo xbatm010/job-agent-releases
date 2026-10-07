@@ -82,10 +82,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.8.0", "channel": "beta"}
+        return {"app_name": "Job Agent Desktop", "version": "2.8.1", "channel": "beta"}
 
 VERSION_INFO = None
-APP_VERSION = "2.8.0"
+APP_VERSION = "2.8.1"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -214,6 +214,15 @@ def load_settings() -> dict:
                     "review": 60,
                 }
                 settings_changed = False
+
+                # Indeed was retired in Desktop 2.8. Remove the legacy setting
+                # from existing local profiles instead of carrying dead config
+                # forward indefinitely.
+                if "source_indeed" in saved:
+                    saved = dict(saved)
+                    saved.pop("source_indeed", None)
+                    settings_changed = True
+
                 if all(
                     saved.get(key, old_value) == old_value
                     for key, old_value in legacy_thresholds.items()
@@ -360,6 +369,10 @@ def load_vacancy_records() -> list[dict]:
                         row = json.loads(raw)
                     except Exception:
                         continue
+                    source = str(row.get("source", "")).strip().lower()
+                    url = str(row.get("url", "")).strip().lower()
+                    if source == "indeed.cz" or "indeed.com" in url:
+                        continue
                     jid = canonical_local_job_id(
                         row.get("job_id", ""),
                         row.get("url", ""),
@@ -375,6 +388,10 @@ def load_vacancy_records() -> list[dict]:
         try:
             with HISTORY_FILE.open("r", encoding="utf-8", newline="") as fh:
                 for row in csv.DictReader(fh):
+                    source = str(row.get("source", "")).strip().lower()
+                    url = str(row.get("url", "")).strip().lower()
+                    if source == "indeed.cz" or "indeed.com" in url:
+                        continue
                     jid = canonical_local_job_id(
                         row.get("job_id", ""),
                         row.get("url", ""),
@@ -756,7 +773,7 @@ class JobAgentWindow(QMainWindow):
         title.setFont(f)
 
         subtitle = QLabel(
-            f"v{APP_VERSION} • 4 sources • Prague • Czech cover letters"
+            f"v{APP_VERSION} • 3 sources • Prague • Czech cover letters"
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color: #666;")
