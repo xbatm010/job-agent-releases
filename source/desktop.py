@@ -10,7 +10,8 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt, Signal, QThread, QObject, Slot, QUrl
-from PySide6.QtGui import QFont, QDesktopServices
+from PySide6.QtGui import QFont, QDesktopServices, QIcon, QPixmap, QPainter
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -81,10 +82,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.5.2", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.6.0", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.5.2"
+APP_VERSION = "2.6.0"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -117,6 +118,27 @@ OVERRIDES_FILE = Path.home() / ".job_agent" / "job_overrides.json"
 def resource_path(name: str) -> Path:
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
     return base / name
+
+
+def brand_pixmap(size: int = 64) -> QPixmap:
+    """Render the bundled SVG brand icon safely at runtime."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+
+    path = resource_path("assets/job_agent_icon.svg")
+    if not path.exists():
+        return pixmap
+
+    try:
+        renderer = QSvgRenderer(str(path))
+        if not renderer.isValid():
+            return pixmap
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+    except Exception:
+        pass
+    return pixmap
 
 
 VERSION_INFO = load_version_info()
@@ -596,6 +618,7 @@ class JobAgentWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"Job Agent Desktop v{APP_VERSION}")
+        self.setWindowIcon(QIcon(brand_pixmap(128)))
         self.settings = load_settings()
 
         self.log_queue = None
@@ -658,6 +681,13 @@ class JobAgentWindow(QMainWindow):
         outer = QVBoxLayout(root)
 
         header = QHBoxLayout()
+
+        self.brand_icon = QLabel()
+        self.brand_icon.setFixedSize(58, 58)
+        self.brand_icon.setPixmap(brand_pixmap(58))
+        self.brand_icon.setScaledContents(True)
+        header.addWidget(self.brand_icon)
+
         title_box = QVBoxLayout()
 
         title = QLabel("Job Agent")
@@ -811,6 +841,21 @@ class JobAgentWindow(QMainWindow):
 
         updates_tab = QWidget()
         updates_layout = QVBoxLayout(updates_tab)
+
+        update_brand_row = QHBoxLayout()
+        update_brand_icon = QLabel()
+        update_brand_icon.setFixedSize(44, 44)
+        update_brand_icon.setPixmap(brand_pixmap(44))
+        update_brand_icon.setScaledContents(True)
+        update_brand_text = QLabel("Job Agent")
+        update_brand_font = QFont()
+        update_brand_font.setPointSize(16)
+        update_brand_font.setBold(True)
+        update_brand_text.setFont(update_brand_font)
+        update_brand_row.addWidget(update_brand_icon)
+        update_brand_row.addWidget(update_brand_text)
+        update_brand_row.addStretch()
+        updates_layout.addLayout(update_brand_row)
 
         version_box = QGroupBox("Application")
         version_form = QFormLayout(version_box)
