@@ -223,6 +223,11 @@ jobs:
           assert Path("buildsrc/assets/job_agent_icon_1024.png").stat().st_size > 10000
           assert Path("buildsrc/assets/JobAgent.icns").stat().st_size > 10000
           print("Brand integration smoke test: OK")
+          assert "WrapLongRows" in desktop
+          assert "Praha + surroundings" in desktop
+          assert "Chromium for weak jobs" in desktop
+          assert "Czech Průvodní dopis" in desktop
+          print("Narrow settings layout smoke test: OK")
           print("Responsive Desktop layout smoke test: OK")
           PY
 
