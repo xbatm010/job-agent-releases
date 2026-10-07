@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 23,
-  "version": "2.7.8",
+  "publish": true,
+  "request_id": 24,
+  "version": "2.7.9",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.7.8 fixes the TargetClosedError seen during manual Indeed verification. The browser fallback now detects when Indeed replaces/closes the CAPTCHA tab, recovers a live replacement tab from the same persistent BrowserContext, preserves the verified session, and continues discovery. Before each Indeed query the agent verifies that the current page is still alive. If the Chromium window/session was actually closed, Indeed stops immediately with one clear message instead of repeating TargetClosedError for every search query. A regression smoke test now reproduces CAPTCHA verification with replacement-tab recovery. CAPTCHA remains fully manual; the agent does not solve or interact with it. All v2.7.7 scoring, CV handling, duplicate protection and manual final Submit safety remain unchanged.",
+  "notes": "Desktop 2.7.9 fixes beta update delivery. Beta builds now derive their default update channel from bundled version.json instead of always defaulting to stable. Existing beta users with the old implicit stable default are migrated to beta automatically, while an explicit user channel choice is preserved. Changing the update channel in the Updates tab is now persisted immediately. This release also retains the v2.7.8 Indeed replacement-tab recovery fix.",
   "last_published": "2.7.8",
   "last_sha256": "8b46efc296da425a47399c105dbb17fdb18cb2eabe7889c7d7f838267950473a"
 }
