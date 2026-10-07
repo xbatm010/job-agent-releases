@@ -1460,6 +1460,23 @@ def application_source_supported(job):
     return str(job.get("source", "")).strip().lower() in APPLICATION_SUPPORTED_SOURCES
 
 
+def cross_site_dedupe_preference(job):
+    """
+    Prefer an application-capable source, then stronger evidence, then Jobs.cz
+    as the tie-breaker because its application adapter is the most mature.
+    """
+    source = str(job.get("source", "")).strip().lower()
+    evidence_rank = {"strong": 0, "medium": 1, "weak": 2}.get(
+        str(job.get("evidence_quality", "")).strip().lower(),
+        3,
+    )
+    return (
+        source not in APPLICATION_SUPPORTED_SOURCES,
+        evidence_rank,
+        source != "jobs.cz",
+    )
+
+
 def manual_review_apply_eligible(job, loc_allowed):
     try:
         score = int(job.get("score", 0))
@@ -7109,8 +7126,8 @@ async def main():
     enriched = await browser_recover_weak_evidence(enriched)
 
     # Cross-site semantic dedup: same normalized employer + title + location.
-    # Keep the strongest evidence first; when evidence is equal, prefer
-    # Jobs.cz because its application adapter is more mature.
+    # Preserve an application-capable source first, then prefer stronger
+    # evidence, with Jobs.cz as the tie-breaker among otherwise equal records.
     groups = {}
     for job in enriched:
         key = dedupe_key(job)
@@ -7122,14 +7139,7 @@ async def main():
         if len(group) > 1:
             duplicate_groups += 1
 
-        group.sort(
-            key=lambda j: (
-                {"strong": 0, "medium": 1, "weak": 2}.get(
-                    j.get("evidence_quality"), 3
-                ),
-                j.get("source") != "jobs.cz",
-            )
-        )
+        group.sort(key=cross_site_dedupe_preference)
         keep = group[0]
         keep["duplicate_sources"] = sorted({
             g.get("source", "") for g in group if g.get("source")
