@@ -233,7 +233,12 @@ jobs:
           assert 'QCheckBox("Indeed.cz")' not in desktop
           assert "discovery-only" in desktop
           assert "3 sources" in desktop
+          assert "4 sources" not in desktop
           assert 'saved.pop("source_indeed", None)' in desktop
+          assert '"indeed.com" in url' in desktop
+          assert "Manual 65–72" not in desktop
+          assert "Manual queue ≥ threshold" in desktop
+          assert "score >= self.manual_queue_spin.value()" in desktop
           assert 'APP_CHANNEL = str(VERSION_INFO.get("channel", "stable"))' in desktop
           assert '"update_channel": APP_CHANNEL' in desktop
           assert '"update_channel_explicit": False' in desktop
@@ -301,6 +306,63 @@ jobs:
               card, "Data Analyst"
           ) == "Example Analytics s.r.o."
           print("Company extraction smoke test: OK")
+
+          assert not main.valid_job_title("Detail pozice")
+          assert not main.valid_job_title("Detail pracovní nabídky")
+          assert main.valid_job_title("Junior Data & Credit Reporting Specialist")
+          title_job = {
+              "title": "Junior Data Analyst",
+              "actual_title": "Junior Data Analyst",
+              "source": "jobs.cz",
+              "description": "SQL reporting Praha",
+              "card_text": "",
+              "evidence_quality": "weak",
+          }
+          main.merge_browser_evidence(
+              title_job,
+              "<html><body><h1>Detail pozice</h1>"
+              "<main>SQL reporting Praha</main></body></html>",
+              "Detail pozice SQL reporting Praha",
+              current_url="https://www.jobs.cz/rpd/123/",
+          )
+          assert title_job["actual_title"] == "Junior Data Analyst"
+          print("Generic vacancy-title preservation smoke test: OK")
+
+          jobs_weak = {
+              "source": "jobs.cz",
+              "evidence_quality": "weak",
+          }
+          prace_strong = {
+              "source": "prace.cz",
+              "evidence_quality": "strong",
+          }
+          startup_strong = {
+              "source": "startupjobs.cz",
+              "evidence_quality": "strong",
+          }
+          jobs_strong = {
+              "source": "jobs.cz",
+              "evidence_quality": "strong",
+          }
+          assert (
+              main.cross_site_dedupe_preference(prace_strong)
+              < main.cross_site_dedupe_preference(jobs_weak)
+          )
+          assert (
+              main.cross_site_dedupe_preference(jobs_weak)
+              < main.cross_site_dedupe_preference(startup_strong)
+          )
+          assert (
+              main.cross_site_dedupe_preference(jobs_strong)
+              < main.cross_site_dedupe_preference(prace_strong)
+          )
+          print("Application-aware cross-site dedupe smoke test: OK")
+
+          assert main.MAX_DISCOVERY_PER_SOURCE == 80
+          assert main.MAX_BROWSER_EVIDENCE_JOBS == 12
+          assert main.MAX_JOBS_TO_REVIEW == 36
+          assert main.MANUAL_CV_FALLBACK is True
+          print("Runtime/default configuration alignment smoke test: OK")
 
           class _FakeLocator:
               def __init__(self, text="", content="", count=1):
