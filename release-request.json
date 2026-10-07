@@ -1,12 +1,10 @@
 {
-  "publish": false,
-  "request_id": 10,
-  "version": "2.5.0",
+  "publish": true,
+  "request_id": 11,
+  "version": "2.5.1",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.5.0 adds Dashboard search and filters, a Clear override action, and Prepare now for a single selected APPLY or eligible REVIEW vacancy without repeating a full discovery run. Prepare now re-checks scoring, strong evidence, location and hard experience blockers before opening the form. Company detection is improved using search-card, structured, DOM, metadata and authenticated-page signals. Final employer Submit remains manual.",
-  "last_published": "2.5.0",
-  "last_sha256": "37838ef4b158e9fb1511b35fa74b59d325f7aea9c85623c06d7a65cd848a2342"
+  "notes": "Desktop 2.5.1 is a duplicate-application safety hotfix. Legacy vacancy IDs such as jobs.cz:<id> and canonical job:<id> are now merged in Dashboard, confirmed terminal history is authoritative, and Prepare now checks local submission history both in the UI and again inside the engine before opening any application form. This prevents a previously submitted vacancy from being prepared again. Final employer Submit remains manual."
 }
