@@ -82,10 +82,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.8.1", "channel": "beta"}
+        return {"app_name": "Job Agent Desktop", "version": "2.8.2", "channel": "beta"}
 
 VERSION_INFO = None
-APP_VERSION = "2.8.1"
+APP_VERSION = "2.8.2"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -1298,6 +1298,18 @@ class JobAgentWindow(QMainWindow):
         ]
         if override_decision:
             details.append(f"Desktop override: {override_decision}")
+        if record.get("candidate_fit") is not None:
+            details.append(f"Skills fit: {record['candidate_fit']}")
+        if record.get("expanded_candidate_fit_min") is not None:
+            details.append(
+                f"Required skills fit: {record['expanded_candidate_fit_min']} "
+                f"({'entry title' if record.get('entry_role') else 'regular title'})"
+            )
+            blockers = record.get("expanded_apply_blockers", [])
+            details.extend(["", "Automatic APPLY checks:"])
+            details.extend(blockers or ["All scoring checks passed."])
+        if record.get("location_gate"):
+            details.append(f"Location check: {record['location_gate']}")
         if record.get("reason"):
             details.extend(["", "Reason:", str(record.get("reason", ""))])
         if record.get("description"):
@@ -2124,3 +2136,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

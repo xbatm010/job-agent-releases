@@ -51,6 +51,9 @@ EXPANDED_MIN_DATA_SIGNALS = int(os.getenv(
 EXPANDED_MIN_CANDIDATE_FIT = int(os.getenv(
     "EXPANDED_MIN_CANDIDATE_FIT", "12"
 ))
+EXPANDED_ENTRY_MIN_CANDIDATE_FIT = int(os.getenv(
+    "EXPANDED_ENTRY_MIN_CANDIDATE_FIT", "10"
+))
 VERIFIED_TARGET_APPLY_SCORE = int(os.getenv("VERIFIED_TARGET_APPLY_SCORE", "64"))
 VERIFIED_TARGET_MIN_CANDIDATE_FIT = int(os.getenv(
     "VERIFIED_TARGET_MIN_CANDIDATE_FIT", "10"
@@ -626,7 +629,7 @@ def expanded_signal_bonus(signals):
     return min(10, max(0, (len(signals) - 2) * 3))
 
 
-def expanded_role_eligible(
+def expanded_role_assessment(
     title,
     text,
     evidence,
@@ -634,18 +637,27 @@ def expanded_role_eligible(
     hard_experience,
 ):
     if role_class(title) != "expanded":
-        return False, []
+        return {
+            "eligible": False, "signals": [],
+            "candidate_fit_min": None, "blockers": [],
+        }
 
     signals = expanded_data_signals(text)
+    # Entry evidence must be in the title, not just generic careers copy in
+    # the description. Keep the normal specialist/operations floor intact.
+    fit_min = EXPANDED_MIN_CANDIDATE_FIT
+    if is_entry_role(title):
+        fit_min = min(fit_min, EXPANDED_ENTRY_MIN_CANDIDATE_FIT)
+    blockers = []
 
     if evidence != "strong":
-        return False, signals
+        blockers.append(f"evidence={evidence} (requires strong)")
     if hard_experience:
-        return False, signals
-    if candidate_fit < EXPANDED_MIN_CANDIDATE_FIT:
-        return False, signals
+        blockers.append("hard 3+ years experience requirement")
+    if candidate_fit < fit_min:
+        blockers.append(f"candidate_fit={candidate_fit} < {fit_min}")
     if len(signals) < EXPANDED_MIN_DATA_SIGNALS:
-        return False, signals
+        blockers.append(f"data_signals={len(signals)} < {EXPANDED_MIN_DATA_SIGNALS}")
 
     central = {
         "sql",
@@ -656,7 +668,7 @@ def expanded_role_eligible(
         "data_modeling",
     }
     if not central.intersection(signals):
-        return False, signals
+        blockers.append("no central data signal")
 
     norm_title = normalize_key_text(title)
     if (
@@ -666,9 +678,24 @@ def expanded_role_eligible(
         or "crm data analyst" in norm_title
     ):
         if len(signals) < EXPANDED_MIN_DATA_SIGNALS + 1:
-            return False, signals
+            blockers.append(
+                f"operations/CRM data_signals={len(signals)} < "
+                f"{EXPANDED_MIN_DATA_SIGNALS + 1}"
+            )
 
-    return True, signals
+    return {
+        "eligible": not blockers,
+        "signals": signals,
+        "candidate_fit_min": fit_min,
+        "blockers": blockers,
+    }
+
+
+def expanded_role_eligible(title, text, evidence, candidate_fit, hard_experience):
+    assessment = expanded_role_assessment(
+        title, text, evidence, candidate_fit, hard_experience
+    )
+    return assessment["eligible"], assessment["signals"]
 
 def discovery_priority(job):
     """
@@ -1362,13 +1389,19 @@ def score_job(job):
         ),
     )
 
-    expanded_eligible, expanded_signals = expanded_role_eligible(
+    expanded_assessment = expanded_role_assessment(
         title=title,
         text=text,
         evidence=evidence,
         candidate_fit=candidate_fit,
         hard_experience=hard_experience,
     )
+    expanded_eligible = expanded_assessment["eligible"]
+    expanded_signals = expanded_assessment["signals"]
+    expanded_fit_min = expanded_assessment["candidate_fit_min"]
+    expanded_apply_blockers = list(expanded_assessment["blockers"])
+    if rc == "expanded" and score < EXPANDED_APPLY_SCORE:
+        expanded_apply_blockers.append(f"score={score} < {EXPANDED_APPLY_SCORE}")
 
     # Safety policy: weak evidence can be REVIEW but never APPLY.
     confidence = {"strong": "high", "medium": "medium", "weak": "low"}[evidence]
@@ -1436,6 +1469,15 @@ def score_job(job):
         f"expanded_signal_bonus={expanded_bonus}",
         f"expanded_signals={','.join(expanded_signals) if expanded_signals else '-'}",
     ]
+    expanded_entry_promotion = (
+        rc == "expanded" and decision == "APPLY" and entry_signal
+        and candidate_fit < EXPANDED_MIN_CANDIDATE_FIT
+    )
+    if rc == "expanded":
+        reasons.insert(0, "expanded_apply_blockers=" + (
+            "; ".join(expanded_apply_blockers) or "none"
+        ))
+        reasons.insert(1, f"expanded_candidate_fit_min={expanded_fit_min}")
     if matched:
         reasons.append("matched=" + ", ".join(matched))
     if gaps:
@@ -1461,6 +1503,10 @@ def score_job(job):
         "soft_experience_penalty": soft_exp_penalty,
         "verified_target_promotion": verified_target_promotion,
         "expanded_role_eligible": expanded_eligible,
+        "expanded_candidate_fit_min": expanded_fit_min,
+        "expanded_apply_blockers": expanded_apply_blockers,
+        "expanded_entry_promotion": expanded_entry_promotion,
+        "entry_role": entry_signal,
         "expanded_signal_bonus": expanded_bonus,
         "expanded_signals": expanded_signals,
         "reasons": reasons,
@@ -1573,6 +1619,13 @@ def save_status(job, status, score, reason):
         "location": job.get("location", ""),
         "resolved_location": job.get("resolved_location", ""),
         "evidence_quality": job.get("evidence_quality", ""),
+        "candidate_fit": job.get("candidate_fit"),
+        "expanded_candidate_fit_min": job.get("expanded_candidate_fit_min"),
+        "expanded_apply_blockers": job.get("expanded_apply_blockers", []),
+        "expanded_signals": job.get("expanded_signals", []),
+        "expanded_entry_promotion": bool(job.get("expanded_entry_promotion")),
+        "entry_role": bool(job.get("entry_role")),
+        "location_gate": job.get("location_gate", ""),
         "hard_experience": bool(job.get("hard_experience")),
         "manual_queue": bool(job.get("manual_queue")),
         "score": score,
@@ -7044,7 +7097,7 @@ async def prepare_single_job(job):
         target.setdefault("reasons", []).append("desktop_prepare_now")
     elif target["decision"] != "APPLY":
         status = "SKIPPED" if target["decision"] == "SKIP" else "REVIEW_PENDING"
-        reason = "; ".join(target.get("reasons", [])[:12])
+        reason = "; ".join(target.get("reasons", []))
         save_status(target, status, target["score"], reason)
         print(
             f"🛑 Prepare now blocked after re-check: "
@@ -7079,7 +7132,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.8.1 — three-source data-role discovery")
+    print("🚀 Starting Job Agent v2.8.2 — three-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
@@ -7103,6 +7156,10 @@ async def main():
         f"ENTRY APPLY >= {ENTRY_APPLY_SCORE} | "
         f"EXPANDED APPLY >= {EXPANDED_APPLY_SCORE} | "
         f"REVIEW >= {MIN_REVIEW_SCORE}"
+    )
+    print(
+        f"🧩 Expanded candidate fit: normal >= {EXPANDED_MIN_CANDIDATE_FIT} | "
+        f"explicit entry >= {min(EXPANDED_MIN_CANDIDATE_FIT, EXPANDED_ENTRY_MIN_CANDIDATE_FIT)}"
     )
     print(
         f"📬 Applications/run: max={MAX_APPLICATIONS_PER_RUN} | "
@@ -7277,6 +7334,11 @@ async def main():
             f"evidence={job.get('evidence_quality')}/{job.get('evidence_source', 'http')} | "
             f"verified={'YES' if job.get('evidence_verified') else 'NO'} | "
             f"promotion={'YES' if job.get('verified_target_promotion') else 'NO'} | "
+            f"candidate_fit={job.get('candidate_fit', '-')} | "
+            f"expanded_fit_min={job.get('expanded_candidate_fit_min') or '-'} | "
+            f"entry_promotion={'YES' if job.get('expanded_entry_promotion') else 'NO'} | "
+            f"expanded_blockers={'; '.join(job.get('expanded_apply_blockers', [])) or 'none'} | "
+            f"location_gate={job.get('location_gate', '-')} | "
             f"expanded_signals={','.join(job.get('expanded_signals', [])) if job.get('expanded_signals') else '-'}"
         )
 
@@ -7295,7 +7357,7 @@ async def main():
             job,
             status,
             job["score"],
-            "; ".join(job.get("reasons", [])[:12]),
+            "; ".join(job.get("reasons", [])),
         )
 
     if not apply_candidates:
@@ -7399,3 +7461,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+

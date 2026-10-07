@@ -519,6 +519,12 @@ jobs:
           print("Dashboard persistence + manual queue safety smoke test: OK")
           PY
 
+      - name: Test scoring and preparation guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s buildsrc/tests -v
+
       - name: Build arm64 macOS app
         shell: bash
         run: |
@@ -641,6 +647,11 @@ jobs:
             fi
           done
 
+          if [ -d "buildsrc/tests" ]; then
+            mkdir -p source/tests
+            find buildsrc/tests -type f -name '*.py' -exec cp {} source/tests/ \;
+          fi
+
           if [ -d "buildsrc/assets" ]; then
             mkdir -p source/assets
             for f in job_agent_icon.svg job_agent_icon_1024.png JobAgent.icns; do
@@ -704,3 +715,4 @@ jobs:
             git pull --rebase origin main
             git push
           fi
+
