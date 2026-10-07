@@ -114,6 +114,7 @@ jobs:
           test -f buildsrc/updater.py
           test -f buildsrc/requirements-desktop.txt
           test -f buildsrc/version.json
+          test -f buildsrc/assets/job_agent_icon.svg
 
       - name: Privacy guard
         shell: bash
@@ -155,6 +156,54 @@ jobs:
           python -m pip install --upgrade pip wheel
           python -m pip install -r buildsrc/requirements-desktop.txt
 
+      - name: Generate macOS brand assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd buildsrc
+
+          python - <<'PY'
+          from pathlib import Path
+          from PySide6.QtGui import QImage, QPainter
+          from PySide6.QtSvg import QSvgRenderer
+
+          svg = Path("assets/job_agent_icon.svg")
+          png = Path("assets/job_agent_icon_1024.png")
+
+          renderer = QSvgRenderer(str(svg))
+          if not renderer.isValid():
+              raise SystemExit("Invalid Job Agent SVG icon")
+
+          image = QImage(1024, 1024, QImage.Format_ARGB32)
+          image.fill(0)
+          painter = QPainter(image)
+          renderer.render(painter)
+          painter.end()
+
+          if not image.save(str(png), "PNG"):
+              raise SystemExit("Failed to render Job Agent PNG icon")
+          print("Rendered:", png)
+          PY
+
+          rm -rf assets/JobAgent.iconset
+          mkdir -p assets/JobAgent.iconset
+          sips -z 16 16 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_16x16.png >/dev/null
+          sips -z 32 32 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_16x16@2x.png >/dev/null
+          sips -z 32 32 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_32x32.png >/dev/null
+          sips -z 64 64 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_32x32@2x.png >/dev/null
+          sips -z 128 128 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_128x128.png >/dev/null
+          sips -z 256 256 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_128x128@2x.png >/dev/null
+          sips -z 256 256 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_256x256.png >/dev/null
+          sips -z 512 512 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_256x256@2x.png >/dev/null
+          sips -z 512 512 assets/job_agent_icon_1024.png --out assets/JobAgent.iconset/icon_512x512.png >/dev/null
+          cp assets/job_agent_icon_1024.png assets/JobAgent.iconset/icon_512x512@2x.png
+          iconutil -c icns assets/JobAgent.iconset -o assets/JobAgent.icns
+          rm -rf assets/JobAgent.iconset
+
+          test -s assets/job_agent_icon_1024.png
+          test -s assets/JobAgent.icns
+          echo "Brand assets generated successfully."
+
       - name: Smoke test dashboard persistence
         shell: bash
         run: |
@@ -168,6 +217,12 @@ jobs:
           assert "dashboard_buttons = [" in desktop
           assert "dash_buttons = QGridLayout()" in desktop
           assert "dash_filters = QGridLayout()" in desktop
+          assert "QSvgRenderer" in desktop
+          assert "def brand_pixmap" in desktop
+          assert "assets/job_agent_icon.svg" in desktop
+          assert Path("buildsrc/assets/job_agent_icon_1024.png").stat().st_size > 10000
+          assert Path("buildsrc/assets/JobAgent.icns").stat().st_size > 10000
+          print("Brand integration smoke test: OK")
           print("Responsive Desktop layout smoke test: OK")
           PY
 
@@ -260,16 +315,19 @@ jobs:
             --target-arch arm64 \
             --name "Job Agent" \
             --osx-bundle-identifier "local.jobagent.desktop" \
+            --icon "assets/JobAgent.icns" \
             --hidden-import main \
             --hidden-import updater \
             --hidden-import playwright \
             --hidden-import playwright.async_api \
             --hidden-import playwright.sync_api \
             --hidden-import certifi \
+            --hidden-import PySide6.QtSvg \
             --collect-data certifi \
             --copy-metadata playwright \
             --add-data ".env.example:." \
             --add-data "version.json:." \
+            --add-data "assets:assets" \
             desktop.py
 
           /usr/bin/codesign --force --deep --sign - "dist/Job Agent.app"
@@ -359,6 +417,15 @@ jobs:
               cp "buildsrc/$f" "source/$f"
             fi
           done
+
+          if [ -d "buildsrc/assets" ]; then
+            mkdir -p source/assets
+            for f in job_agent_icon.svg job_agent_icon_1024.png JobAgent.icns; do
+              if [ -f "buildsrc/assets/$f" ]; then
+                cp "buildsrc/assets/$f" "source/assets/$f"
+              fi
+            done
+          fi
 
           python3 - <<'PY'
           import json, os
