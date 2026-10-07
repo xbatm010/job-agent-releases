@@ -2138,13 +2138,62 @@ async def browser_discovery_fallback(
                         recovered.append(job)
                 except Exception as exc:
                     message = str(exc).lower()
+
+                    # Some Indeed challenge redirects interrupt page.goto()
+                    # before the normal challenge check above can run. Inspect
+                    # the live page once; if it is a visible challenge, pause
+                    # for manual verification instead of classifying it as a
+                    # generic navigation loop.
+                    if (
+                        source_name.lower().startswith("indeed")
+                        and persistent
+                        and not headless
+                    ):
+                        try:
+                            html = await page.content()
+                            visible = ""
+                            try:
+                                body = page.locator("body").first
+                                if await body.count():
+                                    visible = clean(
+                                        await body.inner_text(timeout=1500)
+                                    )
+                            except Exception:
+                                pass
+
+                            if is_access_challenge_page(html, visible):
+                                print(
+                                    f"🛡️ {source_name} CAPTCHA/security "
+                                    f"challenge detected for '{query}'."
+                                )
+                                verified, html_after, _ = (
+                                    await wait_for_manual_access_challenge(
+                                        page,
+                                        source_name,
+                                        query,
+                                        url,
+                                    )
+                                )
+                                if verified:
+                                    for job in parser(html_after, query):
+                                        key = history_key(job)
+                                        if key in seen:
+                                            continue
+                                        seen.add(key)
+                                        recovered.append(job)
+                                    continue
+                                break
+                        except Exception:
+                            pass
+
                     if (
                         source_name.lower().startswith("indeed")
                         and ("navigat" in message or "execution context" in message)
                     ):
                         print(
-                            "🛡️ Indeed.cz navigation/reload loop detected; "
-                            "skipping Indeed for the current run."
+                            "🛡️ Indeed.cz navigation/reload loop detected "
+                            "without a visible CAPTCHA; skipping Indeed for "
+                            "the current run."
                         )
                         break
                     print(
