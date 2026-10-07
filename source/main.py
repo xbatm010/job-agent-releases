@@ -3997,9 +3997,12 @@ def upload_action_text(text):
     if any(x in low for x in blocked):
         return False
 
-    cv_words = ["životopis", "zivotopis", "cv", "resume", "soubor", "file"]
+    cv_words = [
+        "životopis", "zivotopis", "cv", "resume", "soubor", "file",
+    ]
     action_words = [
         "nahrát", "nahrat", "přiložit", "prilozit", "přidat", "pridat",
+        "připojit", "pripojit", "vložit", "vlozit",
         "vybrat", "zvolit", "upload", "attach", "choose", "add",
     ]
     return any(c in low for c in cv_words) and any(a in low for a in action_words)
@@ -4309,10 +4312,30 @@ async def use_candidate_cv_control(page, el, description):
     if tag == "a" and not href_is_safe_upload(href):
         return False, f"unsafe_anchor:{description}"
 
+    # If the text lives in a nested span/div, prefer the nearest semantic
+    # clickable ancestor before falling back to clicking the text node itself.
+    click_el = el
+    if tag not in {"button", "a", "label", "input"}:
+        try:
+            ancestor = el.locator(
+                "xpath=ancestor::*[self::button or self::label or "
+                "@role='button' or @onclick or @tabindex='0'][1]"
+            )
+            if await ancestor.count():
+                click_el = ancestor.first
+                try:
+                    tag = (
+                        await click_el.evaluate("(e) => e.tagName")
+                    ).lower()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     # Native chooser path.
     try:
         async with page.expect_file_chooser(timeout=1600) as info:
-            await el.click(timeout=2800)
+            await click_el.click(timeout=2800)
         chooser = await info.value
         await chooser.set_files(CV_PATH)
         await page.wait_for_timeout(350)
@@ -4324,11 +4347,11 @@ async def use_candidate_cv_control(page, el, description):
 
     # Normal click/check may reveal the actual file input or a second step.
     try:
-        typ = (await el.get_attribute("type") or "").lower()
+        typ = (await click_el.get_attribute("type") or "").lower()
         if typ in {"radio", "checkbox"}:
-            await el.check(force=True)
+            await click_el.check(force=True)
         else:
-            await el.click(timeout=2800)
+            await click_el.click(timeout=2800)
         await page.wait_for_timeout(300)
     except Exception:
         return False, f"click_failed:{description}"
@@ -4369,13 +4392,20 @@ async def discover_cv_controls(page):
         "button",
         "label",
         "a",
+        "summary",
+        "span",
         '[role="button"]',
         'input[type="radio"]',
         'input[type="checkbox"]',
         '[onclick]',
         '[tabindex="0"]',
+        '[aria-expanded]',
         '[data-testid]',
         '[data-test]',
+        '[class*="upload" i]',
+        '[class*="attachment" i]',
+        '[class*="resume" i]',
+        '[class*="cv" i]',
     ]
 
     candidates = []
@@ -4393,6 +4423,11 @@ async def discover_cv_controls(page):
                             continue
 
                         text = await safe_element_text(el)
+                        # Avoid clicking large form containers just because one
+                        # descendant mentions CV/upload. We only consider compact
+                        # action-like controls or their immediate text nodes.
+                        if len(clean(text)) > 220:
+                            continue
                         if not upload_action_text(text):
                             continue
 
@@ -4468,7 +4503,7 @@ async def manual_cv_fallback(page):
     print("\n📎 CV BLOCK NOT IDENTIFIED AUTOMATICALLY")
     print("   In the opened Jobs.cz form, attach/select the CV manually.")
     print("   Do NOT click the final submit button.")
-    print("   v32 will detect the CV and continue automatically.")
+    print("   Job Agent will detect the CV and continue automatically.")
     print("   Diagnostic files: cv_debug.json and cv_debug.png")
 
     original_url = page.url
@@ -4494,7 +4529,7 @@ async def manual_cv_fallback(page):
 
 async def upload_cv_adaptive(page):
     """
-    v32:
+    Adaptive CV upload:
       1) direct file input
       2) saved-CV option
       3) guarded discovery of custom upload controls
@@ -7251,7 +7286,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.7.5 — four-source data-role discovery")
+    print("🚀 Starting Job Agent v2.7.6 — four-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
