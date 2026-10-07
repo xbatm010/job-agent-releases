@@ -1154,11 +1154,9 @@ class JobAgentWindow(QMainWindow):
 
         self.dashboard_all_records = load_vacancy_records()
         overrides = load_job_overrides()
-        self.dashboard_records = [
-            record for record in self.dashboard_all_records
-            if self._dashboard_record_matches_filters(record, overrides)
-        ]
 
+        # Terminal history is authoritative. Apply it before Dashboard filters
+        # so stale REVIEW snapshots cannot reappear as actionable vacancies.
         submitted_ids = terminal_job_ids()
         for record in self.dashboard_all_records:
             canonical = canonical_local_job_id(
@@ -1168,6 +1166,11 @@ class JobAgentWindow(QMainWindow):
             if canonical in submitted_ids:
                 record["status"] = "SUBMITTED_MANUALLY"
                 record["decision"] = "APPLY"
+
+        self.dashboard_records = [
+            record for record in self.dashboard_all_records
+            if self._dashboard_record_matches_filters(record, overrides)
+        ]
 
         self.dashboard_table.setRowCount(len(self.dashboard_records))
         restore_row = -1
