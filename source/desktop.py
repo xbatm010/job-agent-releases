@@ -1070,7 +1070,7 @@ class JobAgentWindow(QMainWindow):
             "INTERESTING",
             "SKIP",
             "SUBMITTED",
-            "Manual 65–72",
+            "Manual queue ≥ threshold",
         ])
         self.dashboard_source_filter = QComboBox()
         self.dashboard_source_filter.addItems([
@@ -1338,14 +1338,15 @@ class JobAgentWindow(QMainWindow):
             return True
         if selected == "SUBMITTED":
             return status in TERMINAL_STATUSES
-        if selected == "Manual 65–72":
+        if selected == "Manual queue ≥ threshold":
             try:
                 score = int(float(record.get("score", 0) or 0))
             except Exception:
                 score = 0
-            return 65 <= score <= 72 and display_decision in {
-                "REVIEW", "QUEUED", "APPLY"
-            }
+            return (
+                score >= self.manual_queue_spin.value()
+                and display_decision in {"REVIEW", "QUEUED"}
+            )
         return display_decision == selected
 
     def _refresh_dashboard(self):
