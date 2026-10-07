@@ -82,10 +82,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.7.2", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.7.3", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.7.2"
+APP_VERSION = "2.7.3"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -174,11 +174,11 @@ DEFAULTS = {
     "source_startupjobs": True,
     "source_indeed": True,
     "max_applications": 3,
-    "min_apply": 73,
-    "verified_apply": 70,
-    "entry_apply": 68,
-    "expanded_apply": 74,
-    "review": 60,
+    "min_apply": 66,
+    "verified_apply": 64,
+    "entry_apply": 62,
+    "expanded_apply": 70,
+    "review": 55,
     "manual_queue_min": 65,
     "browser_evidence": True,
     "czech_cover_letter": True,
@@ -201,6 +201,34 @@ def load_settings() -> dict:
         try:
             saved = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
             if isinstance(saved, dict):
+                # v2.7.3 scoring migration: update only untouched v2.7.2
+                # defaults. Any custom threshold set by the user is preserved.
+                legacy_thresholds = {
+                    "min_apply": 73,
+                    "verified_apply": 70,
+                    "entry_apply": 68,
+                    "expanded_apply": 74,
+                    "review": 60,
+                }
+                if all(
+                    saved.get(key, old_value) == old_value
+                    for key, old_value in legacy_thresholds.items()
+                ):
+                    saved = dict(saved)
+                    saved.update({
+                        "min_apply": 66,
+                        "verified_apply": 64,
+                        "entry_apply": 62,
+                        "expanded_apply": 70,
+                        "review": 55,
+                    })
+                    try:
+                        SETTINGS_FILE.write_text(
+                            json.dumps(saved, ensure_ascii=False, indent=2),
+                            encoding="utf-8",
+                        )
+                    except Exception:
+                        pass
                 data.update(saved)
         except Exception:
             pass
