@@ -345,8 +345,15 @@ jobs:
           assert main.valid_company("Innomotics, s.r.o.", "meta")
           source_text = Path("buildsrc/main.py").read_text(encoding="utf-8")
           assert "v51 will detect the confirmation automatically" not in source_text
+          assert "v32 will detect the CV and continue automatically" not in source_text
           assert "Job Agent will detect the confirmation automatically" in source_text
-          print("Metadata company filtering + confirmation text smoke test: OK")
+          assert "Job Agent will detect the CV and continue automatically" in source_text
+          assert main.upload_action_text("Připojit životopis")
+          assert main.upload_action_text("Vložit CV")
+          assert '[class*="upload" i]' in source_text
+          assert '[class*="resume" i]' in source_text
+          assert 'ancestor::*[self::button' in source_text
+          print("Metadata + adaptive CV reveal smoke test: OK")
 
           submitted = dict(job)
           submitted.update({
