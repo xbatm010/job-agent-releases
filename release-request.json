@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 15,
   "version": "2.7.0",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.7.0 expands discovery from two to four sources by adding StartupJobs.cz and Indeed.cz alongside Jobs.cz and Prace.cz. The new sources have dedicated parsers, source toggles, Dashboard filters, cross-source deduplication, and a read-only Chromium discovery fallback when plain HTTP returns no parsable jobs. StartupJobs.cz and Indeed.cz are intentionally discovery-only in this release: high-scoring vacancies are shown as REVIEW and can be opened manually, but they cannot enter Queue application or Prepare now. Existing duplicate-submission protection and manual final Submit safety remain unchanged."
+  "notes": "Desktop 2.7.0 expands discovery from two to four sources by adding StartupJobs.cz and Indeed.cz alongside Jobs.cz and Prace.cz. The new sources have dedicated parsers, source toggles, Dashboard filters, cross-source deduplication, and a read-only Chromium discovery fallback when plain HTTP returns no parsable jobs. StartupJobs.cz and Indeed.cz are intentionally discovery-only in this release: high-scoring vacancies are shown as REVIEW and can be opened manually, but they cannot enter Queue application or Prepare now. Existing duplicate-submission protection and manual final Submit safety remain unchanged.",
+  "last_published": "2.7.0",
+  "last_sha256": "91b5bdf4109e33e403ba02028f9feb4d9279b02c983c9006d5b6e8de0c595271"
 }
