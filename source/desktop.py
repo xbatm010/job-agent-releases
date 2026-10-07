@@ -1,4 +1,5 @@
 import csv
+from desktop_theme import LIGHT_STYLE, DECISION_LABELS, display_decision, vacancy_detail_html
 import io
 import json
 import multiprocessing as mp
@@ -10,10 +11,17 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Qt, Signal, QThread, QObject, Slot, QUrl
-from PySide6.QtGui import QFont, QDesktopServices, QIcon, QPixmap, QPainter
+from PySide6.QtGui import QColor, QPalette, QTextCursor, QFont, QDesktopServices, QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
+    QMenu,
+    QScrollArea,
+    QSizePolicy,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QStyle,
     QCheckBox,
     QFileDialog,
     QFormLayout,
@@ -82,10 +90,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.8.2", "channel": "beta"}
+        return {"app_name": "Job Agent Desktop", "version": "2.9.0", "channel": "beta"}
 
 VERSION_INFO = None
-APP_VERSION = "2.8.2"
+APP_VERSION = "2.9.0"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -172,6 +180,7 @@ def detect_legacy_profile() -> str:
 
 
 DEFAULTS = {
+    "search_only": True,
     "source_jobs": True,
     "source_prace": True,
     "source_startupjobs": True,
@@ -497,6 +506,7 @@ def child_env(settings: dict) -> dict:
     )
 
     return {
+        "SEARCH_ONLY": str(bool(settings.get("search_only", True))).lower(),
         "SOURCE_JOBS_CZ": str(settings["source_jobs"]).lower(),
         "SOURCE_PRACE_CZ": str(settings["source_prace"]).lower(),
         "SOURCE_STARTUPJOBS_CZ": str(settings["source_startupjobs"]).lower(),
@@ -563,7 +573,7 @@ def agent_worker(settings: dict, q) -> None:
             os.environ[key] = value
 
         cv = Path(settings["cv_path"]).expanduser()
-        if not cv.exists():
+        if not settings.get("search_only", True) and not cv.is_file():
             raise FileNotFoundError(f"CV not found: {cv}")
 
         profile = Path(settings["browser_profile"]).expanduser()
@@ -604,7 +614,7 @@ def prepare_job_worker(settings: dict, job: dict, q) -> None:
             os.environ[key] = value
 
         cv = Path(settings["cv_path"]).expanduser()
-        if not cv.exists():
+        if not cv.is_file():
             raise FileNotFoundError(f"CV not found: {cv}")
 
         profile = Path(settings["browser_profile"]).expanduser()
@@ -687,6 +697,29 @@ class UpdateDownloadWorker(QObject):
             self.finished.emit(None, f"{type(exc).__name__}: {exc}")
 
 
+class VacancyDelegate(QStyledItemDelegate):
+    """Readable title/company hierarchy without HTML in table cells."""
+    def paint(self, painter, option, index):
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        title, _, company = str(index.data(Qt.DisplayRole) or "").partition("\n")
+        opt.text = ""
+        style = opt.widget.style() if opt.widget else QApplication.style()
+        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
+        painter.save()
+        rect = opt.rect.adjusted(10, 10, -10, -8)
+        font = QFont(opt.font)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor("#192639"))
+        painter.drawText(rect, Qt.AlignLeft | Qt.AlignTop, painter.fontMetrics().elidedText(title, Qt.ElideRight, rect.width()))
+        font.setBold(False)
+        painter.setFont(font)
+        painter.setPen(QColor("#708097"))
+        painter.drawText(rect, Qt.AlignLeft | Qt.AlignBottom, painter.fontMetrics().elidedText(company, Qt.ElideRight, rect.width()))
+        painter.restore()
+
+
 class JobAgentWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -743,8 +776,8 @@ class JobAgentWindow(QMainWindow):
             return
 
         available = screen.availableGeometry()
-        target_w = min(1050, max(760, int(available.width() * 0.92)))
-        target_h = min(760, max(560, int(available.height() * 0.90)))
+        target_w = min(1380, max(860, int(available.width() * 0.92)))
+        target_h = min(900, max(640, int(available.height() * 0.90)))
         self.setMinimumSize(
             min(760, max(680, int(available.width() * 0.72))),
             min(560, max(500, int(available.height() * 0.62))),
@@ -752,78 +785,255 @@ class JobAgentWindow(QMainWindow):
         self.resize(target_w, target_h)
 
     def _build_ui(self):
+        palette = QPalette()
+        for role, color in [(QPalette.Window, "#f8faff"), (QPalette.WindowText, "#192639"), (QPalette.Base, "#ffffff"), (QPalette.Text, "#192639"), (QPalette.Button, "#ffffff"), (QPalette.ButtonText, "#192639"), (QPalette.Highlight, "#d9e8ff"), (QPalette.HighlightedText, "#192639")]:
+            palette.setColor(role, QColor(color))
+        self.setPalette(palette)
+        self.setStyleSheet(LIGHT_STYLE)
         root = QWidget()
         self.setCentralWidget(root)
-        outer = QVBoxLayout(root)
-
-        header = QHBoxLayout()
-
+        outer = QHBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        sidebar = QWidget()
+        sidebar.setObjectName("Sidebar")
+        sidebar.setFixedWidth(176)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(14, 24, 14, 18)
+        side.setSpacing(8)
+        brand = QHBoxLayout()
         self.brand_icon = QLabel()
-        self.brand_icon.setFixedSize(58, 58)
-        self.brand_icon.setPixmap(brand_pixmap(58))
-        self.brand_icon.setScaledContents(True)
-        header.addWidget(self.brand_icon)
+        self.brand_icon.setPixmap(brand_pixmap(32))
+        brand.addWidget(self.brand_icon)
+        brand_name = QLabel("Job Agent")
+        brand_name.setStyleSheet("font-size:18px;font-weight:700;")
+        brand.addWidget(brand_name)
+        brand.addStretch()
+        side.addLayout(brand)
+        side.addSpacing(28)
+        self.nav_buttons = []
+        for index, label in enumerate(["Обзор", "Отклики", "Журнал"]):
+            button = QPushButton(label)
+            button.setObjectName("Nav")
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked=False, i=index: self.workspace_tabs.setCurrentIndex(i))
+            self.nav_buttons.append(button)
+            side.addWidget(button)
+        saved = QPushButton("Избранное")
+        saved.setObjectName("Nav")
+        saved.clicked.connect(self._show_favorites)
+        side.addWidget(saved)
+        side.addStretch()
+        for label, tab in [("Профиль", 0), ("Настройки", 1), ("Обновления", 4)]:
+            button = QPushButton(label)
+            button.setObjectName("Nav")
+            button.clicked.connect(lambda checked=False, i=tab: self._open_settings(i))
+            side.addWidget(button)
+        version = QLabel(f"Версия {APP_VERSION} · {APP_CHANNEL}")
+        version.setObjectName("Muted")
+        side.addWidget(version)
+        outer.addWidget(sidebar)
 
-        title_box = QVBoxLayout()
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(24, 24, 24, 16)
+        layout.setSpacing(16)
+        outer.addWidget(content, 1)
+        heading = QHBoxLayout()
+        heading_text = QVBoxLayout()
+        self.page_title = QLabel("Вакансии для тебя")
+        self.page_title.setObjectName("Title")
+        heading_text.addWidget(self.page_title)
+        self.page_subtitle = QLabel("Прага и рядом · Data / BI / Reporting")
+        self.page_subtitle.setObjectName("Muted")
+        self.page_subtitle.setWordWrap(True)
+        heading_text.addWidget(self.page_subtitle)
+        heading.addLayout(heading_text, 1)
+        self.start_btn = QPushButton("Начать поиск")
+        self.start_btn.setObjectName("Primary")
+        self.start_btn.clicked.connect(self.start_agent)
+        self.stop_btn = QPushButton("Стоп")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.clicked.connect(self.stop_agent)
+        heading.addWidget(self.start_btn)
+        heading.addWidget(self.stop_btn)
+        layout.addLayout(heading)
 
-        title = QLabel("Job Agent")
-        f = QFont()
-        f.setPointSize(22)
-        f.setBold(True)
-        title.setFont(f)
+        summary = QHBoxLayout()
+        self.metric_panels = []
+        self.total_value, self.processed_value, self.review_value = QLabel("0"), QLabel("0"), QLabel("0")
+        for value, label in [(self.total_value, "В истории"), (self.processed_value, "Отправлено"), (self.review_value, "На проверку")]:
+            panel = QWidget()
+            box = QVBoxLayout(panel)
+            box.setContentsMargins(0, 0, 0, 0)
+            value.setObjectName("Metric")
+            box.addWidget(value)
+            caption = QLabel(label)
+            caption.setObjectName("Muted")
+            box.addWidget(caption)
+            summary.addWidget(panel)
+            self.metric_panels.append(panel)
+            summary.addSpacing(28)
+        summary.addStretch()
+        self.search_only_check = QCheckBox("Только поиск")
+        self.search_only_check.setToolTip("Собрать и оценить вакансии. Подготовку выбранного отклика можно запустить отдельно.")
+        self.search_only_check.toggled.connect(self._update_run_mode)
+        summary.addWidget(self.search_only_check)
+        layout.addLayout(summary)
 
-        subtitle = QLabel(
-            f"v{APP_VERSION} • 3 sources • Prague • Czech cover letters"
-        )
-        subtitle.setWordWrap(True)
-        subtitle.setStyleSheet("color: #666;")
+        source_row = QHBoxLayout()
+        self.source_badges = {}
+        for source in ("jobs.cz", "prace.cz", "startupjobs.cz"):
+            badge = QLabel(source + " · ещё не проверен")
+            badge.setObjectName("Source")
+            badge.setWordWrap(True)
+            self.source_badges[source] = badge
+            source_row.addWidget(badge, 1)
+        layout.addLayout(source_row)
 
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
-        header.addLayout(title_box)
-        header.addStretch()
+        self.workspace_tabs = QTabWidget()
+        self.workspace_tabs.tabBar().hide()
+        self.workspace_tabs.currentChanged.connect(self._page_changed)
+        layout.addWidget(self.workspace_tabs, 1)
+        dashboard_page = QWidget()
+        dashboard_layout = QVBoxLayout(dashboard_page)
+        dashboard_layout.setContentsMargins(0, 0, 0, 0)
+        dashboard_layout.setSpacing(12)
+        dash_filters = QGridLayout()
+        self.dashboard_search = QLineEdit()
+        self.dashboard_search.setPlaceholderText("Поиск по названию, компании или навыкам…")
+        self.dashboard_decision_filter = QComboBox()
+        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue ≥ threshold")]:
+            self.dashboard_decision_filter.addItem(label, value)
+        self.dashboard_source_filter = QComboBox()
+        self.dashboard_source_filter.addItem("Все источники", "All sources")
+        for source in ("jobs.cz", "prace.cz", "startupjobs.cz"):
+            self.dashboard_source_filter.addItem(source, source)
+        self.dashboard_count = QLabel("0 вакансий")
+        self.dashboard_count.setObjectName("Muted")
+        dash_filters.addWidget(self.dashboard_search, 0, 0, 1, 3)
+        dash_filters.addWidget(self.dashboard_decision_filter, 1, 0)
+        dash_filters.addWidget(self.dashboard_source_filter, 1, 1)
+        dash_filters.addWidget(self.dashboard_count, 1, 2)
+        dash_filters.setColumnStretch(0, 2)
+        dash_filters.setColumnStretch(1, 1)
+        dashboard_layout.addLayout(dash_filters)
+        self.dashboard_search.textChanged.connect(self._refresh_dashboard)
+        self.dashboard_decision_filter.currentIndexChanged.connect(self._refresh_dashboard)
+        self.dashboard_source_filter.currentIndexChanged.connect(self._refresh_dashboard)
 
-        self.status_label = QLabel("● Ready")
-        self.status_label.setStyleSheet(
-            "font-weight: 700; font-size: 15px; color: #227722;"
-        )
-        header.addWidget(self.status_label)
-        outer.addLayout(header)
+        self.dashboard_splitter = QSplitter(Qt.Horizontal)
+        self.dashboard_splitter.setChildrenCollapsible(False)
+        self.dashboard_table = self._new_table(["Вакансия / компания", "Источник", "Оценка", "Статус"])
+        self.dashboard_table.setItemDelegateForColumn(0, VacancyDelegate(self.dashboard_table))
+        self.dashboard_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.dashboard_table.setColumnWidth(1, 116)
+        self.dashboard_table.setColumnWidth(2, 72)
+        self.dashboard_table.setColumnWidth(3, 115)
+        self.dashboard_table.verticalHeader().setDefaultSectionSize(72)
+        self.dashboard_table.itemSelectionChanged.connect(self._dashboard_selection_changed)
+        self.dashboard_table.doubleClicked.connect(lambda _: self._open_selected_job())
+        self.dashboard_splitter.addWidget(self.dashboard_table)
+        detail_panel = QWidget()
+        detail_panel.setMinimumWidth(280)
+        detail_layout = QVBoxLayout(detail_panel)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        self.dashboard_detail = QTextEdit()
+        self.dashboard_detail.setReadOnly(True)
+        self.dashboard_detail.document().setDocumentMargin(20)
+        self.dashboard_detail.setPlaceholderText("Выбери вакансию, чтобы увидеть описание и причины оценки.")
+        detail_layout.addWidget(self.dashboard_detail, 1)
+        dash_buttons = QGridLayout()
+        self.detail_buttons_layout = dash_buttons
+        self.prepare_now_btn = QPushButton("Подготовить отклик")
+        self.prepare_now_btn.setObjectName("Primary")
+        self.open_job_btn = QPushButton("Открыть вакансию")
+        self.prepare_now_btn.clicked.connect(self._prepare_selected_now)
+        self.open_job_btn.clicked.connect(self._open_selected_job)
+        dash_buttons.addWidget(self.prepare_now_btn, 0, 0, 1, 2)
+        dash_buttons.addWidget(self.open_job_btn, 1, 0)
+        more = QPushButton("Ещё…")
+        menu = QMenu(more)
+        self.detail_actions = []
+        for label, callback in [
+            ("В очередь на следующий запуск", self._queue_selected_application),
+            ("Сохранить в избранное", lambda: self._set_selected_override("INTERESTING")),
+            ("Отметить для проверки", lambda: self._set_selected_override("REVIEW")),
+            ("Пропустить", lambda: self._set_selected_override("SKIP")),
+            ("Сбросить отметку", self._clear_selected_override),
+            ("Посмотреть письмо", self._show_selected_cover_letter),
+            ("Копировать письмо", self._copy_selected_cover_letter),
+        ]:
+            action = menu.addAction(label)
+            action.triggered.connect(callback)
+            self.detail_actions.append(action)
+        more.setMenu(menu)
+        self.more_job_btn = more
+        dash_buttons.addWidget(more, 1, 1)
+        detail_layout.addLayout(dash_buttons)
+        note = QLabel("Финальную отправку подтверждаешь ты")
+        self.submit_note = note
+        note.setObjectName("Muted")
+        note.setWordWrap(True)
+        detail_layout.addWidget(note)
+        self.dashboard_splitter.addWidget(detail_panel)
+        self.dashboard_splitter.setSizes([640, 390])
+        dashboard_layout.addWidget(self.dashboard_splitter, 1)
+        self.workspace_tabs.addTab(dashboard_page, "Обзор")
 
-        safety = QLabel(
-            "🔒 Final employer Submit is locked to manual confirmation."
-        )
-        safety.setWordWrap(True)
-        safety.setStyleSheet(
-            "padding: 9px; border: 1px solid #d8d8d8; "
-            "border-radius: 7px; background: #f7f7f7;"
-        )
-        outer.addWidget(safety)
+        applications_page = QWidget()
+        applications_layout = QVBoxLayout(applications_page)
+        applications_layout.setContentsMargins(0, 0, 0, 0)
+        self.applications_count = QLabel("0")
+        applications_layout.addWidget(self.applications_count)
+        self.applications_table = self._new_table(["Оценка", "Вакансия", "Компания", "Решение", "Результат"])
+        self.applications_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.applications_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.applications_table.verticalHeader().setDefaultSectionSize(62)
+        applications_layout.addWidget(self.applications_table, 1)
+        self.workspace_tabs.addTab(applications_page, "Отклики")
 
-        splitter = QSplitter(Qt.Horizontal)
-        outer.addWidget(splitter, 1)
-
-        left = QWidget()
-        left.setMinimumWidth(250)
-        left.setMaximumWidth(340)
-        left_layout = QVBoxLayout(left)
-
-        stats = QGroupBox("Overview")
-        stats_grid = QGridLayout(stats)
-        self.processed_value = QLabel("0")
+        log_page = QWidget()
+        log_layout = QVBoxLayout(log_page)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        log_header = QHBoxLayout()
+        log_header.addWidget(QLabel("Журнал текущего запуска"))
+        log_header.addStretch()
+        copy_log = QPushButton("Копировать журнал")
+        copy_log.clicked.connect(lambda: QApplication.clipboard().setText(self.log.toPlainText()))
+        log_header.addWidget(copy_log)
+        clear_log = QPushButton("Очистить")
+        clear_log.clicked.connect(lambda: self.log.clear())
+        log_header.addWidget(clear_log)
+        log_layout.addLayout(log_header)
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.document().setMaximumBlockCount(12000)
+        self.log.setFont(QFont("Menlo", 11))
+        log_layout.addWidget(self.log, 1)
+        self.workspace_tabs.addTab(log_page, "Журнал")
+        footer = QHBoxLayout()
+        self.status_label = QLabel("● Готов к поиску")
         self.run_time_value = QLabel("—")
-        self.browser_status_value = QLabel("Checking…")
-        stats_grid.addWidget(QLabel("Confirmed applications"), 0, 0)
-        stats_grid.addWidget(self.processed_value, 0, 1)
-        stats_grid.addWidget(QLabel("Current run"), 1, 0)
-        stats_grid.addWidget(self.run_time_value, 1, 1)
-        stats_grid.addWidget(QLabel("Playwright Chromium"), 2, 0)
-        stats_grid.addWidget(self.browser_status_value, 2, 1)
-        left_layout.addWidget(stats)
+        self.browser_status_value = QLabel("")
+        self.latest_log = QLabel("Начни поиск — результаты появятся в списке")
+        self.latest_log.setObjectName("Muted")
+        self.latest_log.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        footer.addWidget(self.status_label)
+        footer.addWidget(self.run_time_value)
+        footer.addWidget(self.latest_log, 1)
+        show_log = QPushButton("Журнал запуска")
+        show_log.clicked.connect(lambda: self.workspace_tabs.setCurrentIndex(2))
+        footer.addWidget(show_log)
+        layout.addLayout(footer)
 
+        self.settings_dialog = QDialog(self)
+        self.settings_dialog.setWindowTitle("Job Agent · Настройки")
+        self.settings_dialog.resize(720, 640)
+        settings_layout = QVBoxLayout(self.settings_dialog)
         tabs = QTabWidget()
-        left_layout.addWidget(tabs, 1)
-
+        self.settings_tabs = tabs
+        settings_layout.addWidget(tabs, 1)
         profile_tab = QWidget()
         profile_layout = QFormLayout(profile_tab)
         profile_layout.setRowWrapPolicy(
@@ -836,19 +1046,19 @@ class JobAgentWindow(QMainWindow):
         self.last_name_edit = QLineEdit()
         self.email_edit = QLineEdit()
         self.phone_edit = QLineEdit()
-        profile_layout.addRow("First name", self.first_name_edit)
-        profile_layout.addRow("Last name", self.last_name_edit)
+        profile_layout.addRow("Имя", self.first_name_edit)
+        profile_layout.addRow("Фамилия", self.last_name_edit)
         profile_layout.addRow("Email", self.email_edit)
-        profile_layout.addRow("Phone", self.phone_edit)
+        profile_layout.addRow("Телефон", self.phone_edit)
 
         profile_note = QLabel(
-            "Personal profile data and the CV path stay on this Mac. "
-            "They are not stored in the public GitHub source repository."
+            "Контакты и путь к резюме хранятся на этом Mac. "
+            "Они нужны для подготовки отклика. Для поиска вакансий заполнять профиль необязательно."
         )
         profile_note.setWordWrap(True)
         profile_note.setStyleSheet("color: #666;")
         profile_layout.addRow(profile_note)
-        tabs.addTab(profile_tab, "Profile")
+        tabs.addTab(profile_tab, "Профиль")
 
         search_tab = QWidget()
         search_layout = QFormLayout(search_tab)
@@ -871,7 +1081,7 @@ class JobAgentWindow(QMainWindow):
         src_l.addWidget(self.startupjobs_check, 1, 0, 1, 2)
         src_l.setColumnStretch(0, 1)
         src_l.setColumnStretch(1, 1)
-        search_layout.addRow("Sources", src_row)
+        search_layout.addRow("Источники", src_row)
 
         discovery_note = QLabel(
             "StartupJobs.cz is discovery-only in this version: "
@@ -885,25 +1095,25 @@ class JobAgentWindow(QMainWindow):
         self.prague_check.setToolTip(
             "Limit search to Praha and the allowed surrounding area."
         )
-        search_layout.addRow("Location", self.prague_check)
+        search_layout.addRow("Расположение", self.prague_check)
 
         self.browser_check = QCheckBox("Chromium for weak jobs")
         self.browser_check.setToolTip(
             "Render vacancies with weak HTTP evidence in Chromium."
         )
-        search_layout.addRow("Evidence", self.browser_check)
+        search_layout.addRow("Загрузка описаний", self.browser_check)
 
         self.cover_check = QCheckBox("Czech Průvodní dopis")
         self.cover_check.setToolTip(
             "Generate and fill a Czech cover letter when a supported field exists."
         )
-        search_layout.addRow("Cover letter", self.cover_check)
+        search_layout.addRow("Письмо", self.cover_check)
 
         self.max_apps_spin = QSpinBox()
         self.max_apps_spin.setRange(1, 5)
-        search_layout.addRow("Applications / run", self.max_apps_spin)
+        search_layout.addRow("Откликов за запуск", self.max_apps_spin)
 
-        tabs.addTab(search_tab, "Search")
+        tabs.addTab(search_tab, "Поиск")
 
         scoring_tab = QWidget()
         scoring_layout = QFormLayout(scoring_tab)
@@ -927,7 +1137,7 @@ class JobAgentWindow(QMainWindow):
         scoring_layout.addRow("Expanded role ≥", self.expanded_spin)
         scoring_layout.addRow("REVIEW ≥", self.review_spin)
         scoring_layout.addRow("Manual queue ≥", self.manual_queue_spin)
-        tabs.addTab(scoring_tab, "Scoring")
+        tabs.addTab(scoring_tab, "Оценка")
 
         paths_tab = QWidget()
         paths_layout = QVBoxLayout(paths_tab)
@@ -952,7 +1162,7 @@ class JobAgentWindow(QMainWindow):
         paths_layout.addLayout(profile_row)
 
         paths_layout.addStretch()
-        tabs.addTab(paths_tab, "Files")
+        tabs.addTab(paths_tab, "Файлы")
 
         updates_tab = QWidget()
         updates_layout = QVBoxLayout(updates_tab)
@@ -1015,250 +1225,85 @@ class JobAgentWindow(QMainWindow):
         updates_layout.addLayout(buttons)
         updates_layout.addStretch()
 
-        tabs.addTab(updates_tab, "Updates")
+        tabs.addTab(updates_tab, "Обновления")
 
-        button_row = QHBoxLayout()
-        self.start_btn = QPushButton("▶ Start Search")
-        self.stop_btn = QPushButton("■ Stop")
-        self.stop_btn.setEnabled(False)
+        for i in range(tabs.count()):
+            page = tabs.widget(i)
+            label = tabs.tabText(i)
+            tabs.removeTab(i)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.NoFrame)
+            scroll.setWidget(page)
+            tabs.insertTab(i, scroll, label)
+        save = QPushButton("Сохранить настройки")
+        save.setObjectName("Primary")
+        save.clicked.connect(self._save_preferences)
+        settings_layout.addWidget(save)
+        self.prague_check.toggled.connect(self._update_run_mode)
+        self._page_changed(0)
 
-        self.start_btn.setMinimumHeight(40)
-        self.stop_btn.setMinimumHeight(40)
+    def _new_table(self, headers):
+        table = QTableWidget(0, len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.verticalHeader().hide()
+        table.setShowGrid(False)
+        table.setWordWrap(True)
+        table.setAlternatingRowColors(True)
+        table.setMinimumSize(0, 130)
+        table.horizontalHeader().setMinimumSectionSize(55)
+        table.horizontalHeader().setStretchLastSection(False)
+        return table
 
-        self.start_btn.clicked.connect(self.start_agent)
-        self.stop_btn.clicked.connect(self.stop_agent)
+    def _page_changed(self, index):
+        self.page_title.setText(["Вакансии для тебя", "История откликов", "Журнал работы"][index])
+        for i, button in enumerate(self.nav_buttons):
+            button.setChecked(i == index)
 
-        button_row.addWidget(self.start_btn, 2)
-        button_row.addWidget(self.stop_btn, 1)
-        left_layout.addLayout(button_row)
+    def _show_favorites(self):
+        self.workspace_tabs.setCurrentIndex(0)
+        self.dashboard_decision_filter.setCurrentIndex(self.dashboard_decision_filter.findData("INTERESTING"))
 
-        splitter.addWidget(left)
+    def _open_settings(self, index):
+        self.settings_tabs.setCurrentIndex(index)
+        self.settings_dialog.show()
+        self.settings_dialog.raise_()
 
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
+    def _save_preferences(self):
+        self.settings = self._collect_settings()
+        save_settings(self.settings)
+        self.settings_dialog.accept()
+        self._update_run_mode()
+        self._refresh_dashboard()
 
-        self.workspace_tabs = QTabWidget()
-        right_layout.addWidget(self.workspace_tabs, 1)
+    def _update_run_mode(self):
+        self.start_btn.setText("Начать поиск" if self.search_only_check.isChecked() else "Найти и подготовить")
+        area = "Прага и рядом" if self.prague_check.isChecked() else "Любое расположение"
+        self.page_subtitle.setText(area + " · Data / BI / Reporting")
 
-        # Dashboard ---------------------------------------------------------
-        dashboard_page = QWidget()
-        dashboard_layout = QVBoxLayout(dashboard_page)
-
-        dash_header = QHBoxLayout()
-        dash_title = QLabel("Vacancy Dashboard")
-        dash_font = QFont()
-        dash_font.setBold(True)
-        dash_title.setFont(dash_font)
-        dash_header.addWidget(dash_title)
-        dash_header.addStretch()
-        self.dashboard_count = QLabel("0 jobs")
-        self.refresh_dashboard_btn = QPushButton("Refresh")
-        self.refresh_dashboard_btn.clicked.connect(self._refresh_dashboard)
-        dash_header.addWidget(self.dashboard_count)
-        dash_header.addWidget(self.refresh_dashboard_btn)
-        dashboard_layout.addLayout(dash_header)
-
-        dash_filters = QGridLayout()
-        self.dashboard_search = QLineEdit()
-        self.dashboard_search.setPlaceholderText("Search position or company…")
-        self.dashboard_decision_filter = QComboBox()
-        self.dashboard_decision_filter.addItems([
-            "All",
-            "APPLY",
-            "REVIEW",
-            "QUEUED",
-            "INTERESTING",
-            "SKIP",
-            "SUBMITTED",
-            "Manual queue ≥ threshold",
-        ])
-        self.dashboard_source_filter = QComboBox()
-        self.dashboard_source_filter.addItems([
-            "All sources",
-            "jobs.cz",
-            "prace.cz",
-            "startupjobs.cz",
-        ])
-        self.dashboard_search.textChanged.connect(self._refresh_dashboard)
-        self.dashboard_decision_filter.currentTextChanged.connect(
-            self._refresh_dashboard
-        )
-        self.dashboard_source_filter.currentTextChanged.connect(
-            self._refresh_dashboard
-        )
-        dash_filters.addWidget(self.dashboard_search, 0, 0, 1, 2)
-        dash_filters.addWidget(self.dashboard_decision_filter, 1, 0)
-        dash_filters.addWidget(self.dashboard_source_filter, 1, 1)
-        dash_filters.setColumnStretch(0, 1)
-        dash_filters.setColumnStretch(1, 1)
-        dashboard_layout.addLayout(dash_filters)
-
-        self.dashboard_table = QTableWidget(0, 5)
-        self.dashboard_table.setHorizontalHeaderLabels(
-            ["Score", "Position", "Company", "Decision", "Status"]
-        )
-        self.dashboard_table.setSelectionBehavior(
-            QAbstractItemView.SelectRows
-        )
-        self.dashboard_table.setSelectionMode(
-            QAbstractItemView.SingleSelection
-        )
-        self.dashboard_table.setEditTriggers(
-            QAbstractItemView.NoEditTriggers
-        )
-        self.dashboard_table.verticalHeader().setVisible(False)
-        self.dashboard_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeToContents
-        )
-        self.dashboard_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch
-        )
-        self.dashboard_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.Stretch
-        )
-        self.dashboard_table.setMinimumWidth(0)
-        self.dashboard_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeToContents
-        )
-        self.dashboard_table.horizontalHeader().setSectionResizeMode(
-            4, QHeaderView.ResizeToContents
-        )
-        self.dashboard_table.itemSelectionChanged.connect(
-            self._dashboard_selection_changed
-        )
-        dashboard_layout.addWidget(self.dashboard_table, 2)
-
-        dash_buttons = QGridLayout()
-        self.open_job_btn = QPushButton("Open job")
-        self.manual_apply_btn = QPushButton("Queue application")
-        self.prepare_now_btn = QPushButton("Prepare now")
-        self.review_override_btn = QPushButton("Set REVIEW")
-        self.interesting_btn = QPushButton("Mark interesting")
-        self.skip_job_btn = QPushButton("Skip")
-        self.clear_override_btn = QPushButton("Clear override")
-        self.cover_letter_btn = QPushButton("Show cover letter")
-        self.copy_cover_letter_btn = QPushButton("Copy cover letter")
-
-        self.open_job_btn.clicked.connect(self._open_selected_job)
-        self.manual_apply_btn.clicked.connect(self._queue_selected_application)
-        self.prepare_now_btn.clicked.connect(self._prepare_selected_now)
-        self.review_override_btn.clicked.connect(
-            lambda: self._set_selected_override("REVIEW")
-        )
-        self.interesting_btn.clicked.connect(
-            lambda: self._set_selected_override("INTERESTING")
-        )
-        self.skip_job_btn.clicked.connect(
-            lambda: self._set_selected_override("SKIP")
-        )
-        self.clear_override_btn.clicked.connect(
-            self._clear_selected_override
-        )
-        self.cover_letter_btn.clicked.connect(
-            self._show_selected_cover_letter
-        )
-        self.copy_cover_letter_btn.clicked.connect(
-            self._copy_selected_cover_letter
-        )
-
-        dashboard_buttons = [
-            self.open_job_btn,
-            self.manual_apply_btn,
-            self.prepare_now_btn,
-            self.review_override_btn,
-            self.interesting_btn,
-            self.skip_job_btn,
-            self.clear_override_btn,
-            self.cover_letter_btn,
-            self.copy_cover_letter_btn,
-        ]
-        for index, button in enumerate(dashboard_buttons):
-            row, col = divmod(index, 3)
-            button.setMinimumWidth(0)
-            dash_buttons.addWidget(button, row, col)
-        for col in range(3):
-            dash_buttons.setColumnStretch(col, 1)
-        dashboard_layout.addLayout(dash_buttons)
-
-        self.dashboard_detail = QTextEdit()
-        self.dashboard_detail.setReadOnly(True)
-        self.dashboard_detail.setPlaceholderText(
-            "Select a vacancy to see details."
-        )
-        dashboard_layout.addWidget(self.dashboard_detail, 1)
-        self.workspace_tabs.addTab(dashboard_page, "Dashboard")
-
-        # Applications history --------------------------------------------
-        applications_page = QWidget()
-        applications_layout = QVBoxLayout(applications_page)
-
-        app_header = QHBoxLayout()
-        app_title = QLabel("Applications history")
-        app_title.setFont(dash_font)
-        app_header.addWidget(app_title)
-        app_header.addStretch()
-        self.applications_count = QLabel("0")
-        app_header.addWidget(self.applications_count)
-        applications_layout.addLayout(app_header)
-
-        self.applications_table = QTableWidget(0, 5)
-        self.applications_table.setHorizontalHeaderLabels(
-            ["Score", "Position", "Company", "Decision", "Status"]
-        )
-        self.applications_table.setSelectionBehavior(
-            QAbstractItemView.SelectRows
-        )
-        self.applications_table.setEditTriggers(
-            QAbstractItemView.NoEditTriggers
-        )
-        self.applications_table.verticalHeader().setVisible(False)
-        self.applications_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeToContents
-        )
-        self.applications_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.Stretch
-        )
-        self.applications_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.Stretch
-        )
-        self.applications_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeToContents
-        )
-        self.applications_table.horizontalHeader().setSectionResizeMode(
-            4, QHeaderView.ResizeToContents
-        )
-        applications_layout.addWidget(self.applications_table, 1)
-        self.workspace_tabs.addTab(applications_page, "Applications")
-
-        # Live log --------------------------------------------------------
-        log_page = QWidget()
-        log_layout = QVBoxLayout(log_page)
-        log_header = QHBoxLayout()
-        log_title = QLabel("Live log")
-        lf = QFont()
-        lf.setBold(True)
-        log_title.setFont(lf)
-        log_header.addWidget(log_title)
-        log_header.addStretch()
-
-        clear_btn = QPushButton("Clear")
-        clear_btn.clicked.connect(lambda: self.log.clear())
-        log_header.addWidget(clear_btn)
-        log_layout.addLayout(log_header)
-
-        self.log = QTextEdit()
-        self.log.setReadOnly(True)
-        mono = QFont("Menlo")
-        mono.setStyleHint(QFont.Monospace)
-        mono.setPointSize(11)
-        self.log.setFont(mono)
-        log_layout.addWidget(self.log, 1)
-        self.workspace_tabs.addTab(log_page, "Live log")
-
-        splitter.addWidget(right)
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([300, 680])
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "dashboard_splitter"):
+            direction = Qt.Vertical if self.width() < 1120 else Qt.Horizontal
+            compact = direction == Qt.Vertical
+            for panel in self.metric_panels:
+                panel.setVisible(not compact)
+            self.submit_note.setVisible(not compact)
+            if self.dashboard_splitter.orientation() != direction:
+                self.dashboard_splitter.setOrientation(direction)
+                for button in [self.prepare_now_btn, self.open_job_btn, self.more_job_btn]:
+                    self.detail_buttons_layout.removeWidget(button)
+                if compact:
+                    for col, button in enumerate([self.prepare_now_btn, self.open_job_btn, self.more_job_btn]):
+                        self.detail_buttons_layout.addWidget(button, 0, col)
+                else:
+                    self.detail_buttons_layout.addWidget(self.prepare_now_btn, 0, 0, 1, 2)
+                    self.detail_buttons_layout.addWidget(self.open_job_btn, 1, 0)
+                    self.detail_buttons_layout.addWidget(self.more_job_btn, 1, 1)
+                self.dashboard_splitter.setSizes([150, 300] if compact else [640, 390])
 
     def _application_source_supported(self, record):
         return str(record.get("source", "")).strip().lower() in {
@@ -1275,49 +1320,46 @@ class JobAgentWindow(QMainWindow):
     def _dashboard_selection_changed(self):
         record = self._selected_dashboard_record()
         if not record:
-            self.dashboard_detail.clear()
+            self.dashboard_detail.setPlainText("Пока нет вакансий. Начни поиск или измени фильтры.")
+            self._detail_signature = None
+            self.open_job_btn.setEnabled(False)
+            self.prepare_now_btn.setEnabled(False)
+            self.more_job_btn.setEnabled(False)
             return
-
-        override = load_job_overrides().get(
-            str(record.get("job_id", "")),
-            {},
+        overrides = load_job_overrides()
+        decision = display_decision(record, overrides)
+        signature = (json.dumps(record, sort_keys=True, ensure_ascii=False), decision)
+        if signature != getattr(self, "_detail_signature", None):
+            self.dashboard_detail.setHtml(vacancy_detail_html(record, decision))
+            self._detail_signature = signature
+        running = bool(self.agent_process and self.agent_process.is_alive())
+        terminal = decision == "SUBMITTED"
+        supported = self._application_source_supported(record)
+        self.open_job_btn.setEnabled(bool(record.get("url")))
+        self.more_job_btn.setEnabled(True)
+        try:
+            score = int(float(record.get("score", 0) or 0))
+        except (TypeError, ValueError):
+            score = 0
+        eligible = record.get("decision") == "APPLY" or (
+            record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
         )
-        override_decision = str(override.get("decision", "")).strip()
-
-        details = [
-            f"Position: {record.get('title', '')}",
-            f"Company: {record.get('company', '')}",
-            f"Score: {record.get('score', '')}",
-            f"Decision: {record.get('decision', '')}",
-            f"Status: {record.get('status', '')}",
-            f"Role class: {record.get('role_class', '')}",
-            f"Source: {record.get('source', '')}",
-            f"Location: {record.get('resolved_location') or record.get('location', '')}",
-            f"Evidence: {record.get('evidence_quality', '')}",
-            f"3+ years block: {'YES' if record.get('hard_experience') else 'NO'}",
-        ]
-        if override_decision:
-            details.append(f"Desktop override: {override_decision}")
-        if record.get("candidate_fit") is not None:
-            details.append(f"Skills fit: {record['candidate_fit']}")
-        if record.get("expanded_candidate_fit_min") is not None:
-            details.append(
-                f"Required skills fit: {record['expanded_candidate_fit_min']} "
-                f"({'entry title' if record.get('entry_role') else 'regular title'})"
-            )
-            blockers = record.get("expanded_apply_blockers", [])
-            details.extend(["", "Automatic APPLY checks:"])
-            details.extend(blockers or ["All scoring checks passed."])
-        if record.get("location_gate"):
-            details.append(f"Location check: {record['location_gate']}")
-        if record.get("reason"):
-            details.extend(["", "Reason:", str(record.get("reason", ""))])
-        if record.get("description"):
-            details.extend(
-                ["", "Description:", str(record.get("description", ""))]
-            )
-
-        self.dashboard_detail.setPlainText("\n".join(details))
+        enabled = not running and not terminal and supported and eligible and decision != "SKIP"
+        self.prepare_now_btn.setEnabled(enabled)
+        self.prepare_now_btn.setToolTip(
+            "Отклик уже отправлен" if terminal else
+            "Открой вакансию и откликнись на сайте" if not supported else
+            "Перед заполнением агент повторно проверит вакансию"
+        )
+        for index, action in enumerate(self.detail_actions):
+            if index >= 5:
+                action.setEnabled(bool(record.get("cover_letter")))
+            else:
+                action.setEnabled(not running and not terminal)
+        self.detail_actions[0].setEnabled(
+            not running and not terminal and supported
+            and record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
+        )
 
     def _dashboard_record_matches_filters(self, record, overrides):
         query = self.dashboard_search.text().strip().lower()
@@ -1326,11 +1368,13 @@ class JobAgentWindow(QMainWindow):
                 str(record.get("title", "")),
                 str(record.get("company", "")),
                 str(record.get("location", "")),
+                str(record.get("description", "")),
+                " ".join(record.get("expanded_signals", [])),
             ]).lower()
             if query not in haystack:
                 return False
 
-        source_filter = self.dashboard_source_filter.currentText().strip()
+        source_filter = self.dashboard_source_filter.currentData() or "All sources"
         if (
             source_filter != "All sources"
             and str(record.get("source", "")).strip() != source_filter
@@ -1343,9 +1387,11 @@ class JobAgentWindow(QMainWindow):
         ).upper().strip()
         decision = override or str(record.get("decision", "")).upper().strip()
         display_decision = "QUEUED" if override == "MANUAL_APPLY" else decision
+        if record.get("status") in TERMINAL_STATUSES:
+            display_decision = "SUBMITTED"
         status = str(record.get("status", "")).upper().strip()
 
-        selected = self.dashboard_decision_filter.currentText().strip()
+        selected = self.dashboard_decision_filter.currentData() or "All"
         if selected == "All":
             return True
         if selected == "SUBMITTED":
@@ -1362,99 +1408,56 @@ class JobAgentWindow(QMainWindow):
         return display_decision == selected
 
     def _refresh_dashboard(self):
-        selected_id = ""
         selected = self._selected_dashboard_record()
-        if selected:
-            selected_id = str(selected.get("job_id", ""))
-
+        selected_id = str(selected.get("job_id", "")) if selected else ""
         self.dashboard_all_records = load_vacancy_records()
         overrides = load_job_overrides()
-
-        # Terminal history is authoritative. Apply it before Dashboard filters
-        # so stale REVIEW snapshots cannot reappear as actionable vacancies.
         submitted_ids = terminal_job_ids()
         for record in self.dashboard_all_records:
-            canonical = canonical_local_job_id(
-                record.get("job_id", ""),
-                record.get("url", ""),
-            )
+            canonical = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
             if canonical in submitted_ids:
                 record["status"] = "SUBMITTED_MANUALLY"
                 record["decision"] = "APPLY"
-
-        self.dashboard_records = [
-            record for record in self.dashboard_all_records
-            if self._dashboard_record_matches_filters(record, overrides)
-        ]
-
+        self.dashboard_records = [r for r in self.dashboard_all_records if self._dashboard_record_matches_filters(r, overrides)]
+        self.dashboard_table.blockSignals(True)
         self.dashboard_table.setRowCount(len(self.dashboard_records))
-        restore_row = -1
-
+        restore_row = 0
+        colors = {"APPLY": "#23713e", "SUBMITTED": "#065acb", "REVIEW": "#956619", "SKIP": "#7d8798"}
         for row_index, record in enumerate(self.dashboard_records):
             jid = str(record.get("job_id", ""))
-            override = str(
-                overrides.get(jid, {}).get("decision", "")
-            ).strip()
-            decision = override or str(record.get("decision", ""))
-            display_decision = (
-                "QUEUED" if override == "MANUAL_APPLY" else decision
-            )
-
+            decision = display_decision(record, overrides)
             values = [
-                str(record.get("score", "")),
-                str(record.get("title", "")),
-                str(record.get("company", "")),
-                display_decision,
-                str(record.get("status", "")),
+                str(record.get("title", "")) + "\n" + (record.get("company") or "Компания не определена"),
+                str(record.get("source") or "—"),
+                str(record.get("score", "—")) + "/100",
+                DECISION_LABELS.get(decision, decision),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.UserRole, jid)
+                item.setToolTip(value)
+                if col in {2, 3}:
+                    item.setForeground(QColor(colors.get(decision, "#425777")))
                 self.dashboard_table.setItem(row_index, col, item)
-
-            if jid and jid == selected_id:
+            if jid == selected_id:
                 restore_row = row_index
-
-        self.dashboard_count.setText(
-            f"{len(self.dashboard_records)} jobs"
-        )
-
-        application_records = [
-            r for r in self.dashboard_all_records
-            if str(r.get("status", "")) not in {
-                "",
-                "REVIEW_PENDING",
-                "SKIPPED",
-            }
-        ]
-        self.applications_table.setRowCount(len(application_records))
-        for row_index, record in enumerate(application_records):
-            jid = str(record.get("job_id", ""))
-            override = str(
-                overrides.get(jid, {}).get("decision", "")
-            ).strip()
-            decision = override or str(record.get("decision", ""))
-            values = [
-                str(record.get("score", "")),
-                str(record.get("title", "")),
-                str(record.get("company", "")),
-                decision,
-                str(record.get("status", "")),
-            ]
-            for col, value in enumerate(values):
-                self.applications_table.setItem(
-                    row_index,
-                    col,
-                    QTableWidgetItem(value),
-                )
-        self.applications_count.setText(str(len(application_records)))
-
-        if restore_row >= 0:
+        if self.dashboard_records:
             self.dashboard_table.selectRow(restore_row)
-        elif self.dashboard_records and self.dashboard_table.currentRow() < 0:
-            self.dashboard_table.selectRow(0)
-        else:
-            self._dashboard_selection_changed()
+        self.dashboard_table.blockSignals(False)
+        self.dashboard_count.setText(f"{len(self.dashboard_records)} вакансий")
+        self.total_value.setText(str(len(self.dashboard_all_records)))
+        self.review_value.setText(str(sum(display_decision(r, overrides) == "REVIEW" for r in self.dashboard_all_records)))
+        application_records = [r for r in self.dashboard_all_records if r.get("status", "") not in {"", "REVIEW_PENDING", "SKIPPED", "READY_TO_PREPARE"}]
+        self.applications_table.setRowCount(len(application_records))
+        for row, record in enumerate(application_records):
+            decision = display_decision(record, overrides)
+            values = [str(record.get("score", "")), str(record.get("title", "")), str(record.get("company", "")), DECISION_LABELS.get(decision, decision), str(record.get("status", ""))]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setToolTip(value)
+                self.applications_table.setItem(row, col, item)
+        self.applications_count.setText(f"Попыток отклика в истории: {len(application_records)}")
+        self._dashboard_selection_changed()
 
     def _open_selected_job(self):
         record = self._selected_dashboard_record()
@@ -1589,7 +1592,7 @@ class JobAgentWindow(QMainWindow):
             return
 
         settings = self._collect_settings()
-        error = self._validate_settings(settings)
+        error = self._validate_settings(settings, require_application=True)
         if error:
             QMessageBox.warning(self, "Job Agent", error)
             return
@@ -1708,6 +1711,7 @@ class JobAgentWindow(QMainWindow):
         self.email_edit.setText(str(s.get("email", "")))
         self.phone_edit.setText(str(s.get("phone", "")))
 
+        self.search_only_check.setChecked(bool(s.get("search_only", True)))
         self.jobs_check.setChecked(bool(s["source_jobs"]))
         self.prace_check.setChecked(bool(s["source_prace"]))
         self.startupjobs_check.setChecked(bool(s.get("source_startupjobs", True)))
@@ -1755,6 +1759,7 @@ class JobAgentWindow(QMainWindow):
             "last_name": self.last_name_edit.text().strip(),
             "email": self.email_edit.text().strip(),
             "phone": self.phone_edit.text().strip(),
+            "search_only": self.search_only_check.isChecked(),
             "source_jobs": self.jobs_check.isChecked(),
             "source_prace": self.prace_check.isChecked(),
             "source_startupjobs": self.startupjobs_check.isChecked(),
@@ -1781,7 +1786,9 @@ class JobAgentWindow(QMainWindow):
             "auto_check_updates": self.auto_update_check.isChecked(),
         }
 
-    def _validate_settings(self, s):
+    def _validate_settings(self, s, require_application=None):
+        if require_application is None:
+            require_application = not s.get("search_only", True)
         required = {
             "First name": s.get("first_name", ""),
             "Last name": s.get("last_name", ""),
@@ -1792,7 +1799,7 @@ class JobAgentWindow(QMainWindow):
             label for label, value in required.items()
             if not str(value).strip()
         ]
-        if missing:
+        if require_application and missing:
             return "Complete the Profile tab first: " + ", ".join(missing)
 
         if not any([
@@ -1803,7 +1810,7 @@ class JobAgentWindow(QMainWindow):
             return "Enable at least one source."
 
         cv = Path(s["cv_path"]).expanduser()
-        if not cv.exists():
+        if require_application and not cv.is_file():
             return f"CV file does not exist:\n{cv}"
 
         if s["review"] > s["min_apply"]:
@@ -1836,7 +1843,14 @@ class JobAgentWindow(QMainWindow):
     def _append_log(self, text):
         if text is None:
             return
-        self.log.append(str(text))
+        cursor = self.log.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        cursor.insertText(str(text) + "\n")
+        self.log.setTextCursor(cursor)
+        line = str(text).strip().splitlines()
+        if line:
+            self.latest_log.setText(line[-1])
+            self.latest_log.setToolTip(line[-1])
         sb = self.log.verticalScrollBar()
         sb.setValue(sb.maximum())
 
@@ -1885,7 +1899,7 @@ class JobAgentWindow(QMainWindow):
             self._set_running(False)
             return
 
-        self.status_label.setText("● Stopping…")
+        self.status_label.setText("● Остановка…")
         self.status_label.setStyleSheet(
             "font-weight: 700; font-size: 15px; color: #a06000;"
         )
@@ -1915,20 +1929,22 @@ class JobAgentWindow(QMainWindow):
     def _set_running(self, running):
         self.start_btn.setEnabled(not running)
         self.stop_btn.setEnabled(running)
+        self.search_only_check.setEnabled(not running)
         if hasattr(self, "prepare_now_btn"):
             self.prepare_now_btn.setEnabled(not running)
 
         if running:
-            self.status_label.setText("● Running")
+            self.status_label.setText("● Поиск идёт")
             self.status_label.setStyleSheet(
                 "font-weight: 700; font-size: 15px; color: #1f6fbd;"
             )
         else:
-            self.status_label.setText("● Ready")
+            self.status_label.setText("● Готов к поиску")
             self.status_label.setStyleSheet(
                 "font-weight: 700; font-size: 15px; color: #227722;"
             )
             self.run_started_at = None
+        self._dashboard_selection_changed()
 
     def _poll_queue(self):
         if self.log_queue:
@@ -2084,9 +2100,27 @@ class JobAgentWindow(QMainWindow):
         )
         QApplication.quit()
 
+    def _refresh_source_status(self):
+        try:
+            data = json.loads((HISTORY_FILE.parent / "discovery_status.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        running = bool(self.agent_process and self.agent_process.is_alive())
+        for name, label in self.source_badges.items():
+            info = data.get("sources", {}).get(name, {})
+            status = info.get("status", "unknown")
+            count = info.get("count", 0)
+            caption = {"ok": f"{count} найдено", "partial": f"{count} · есть ошибки", "empty": "0 · нужна проверка", "error": "ошибка загрузки", "disabled": "выключен", "searching": "поиск…" if running else "не завершён", "unknown": "не проверен"}.get(status, "нужна проверка")
+            color = "#23713e" if status == "ok" else "#97620d" if status in {"partial", "empty", "error"} else "#6b7990"
+            label.setText(name + " · " + caption)
+            label.setStyleSheet(f"color:{color};")
+            details = "\n".join(info.get("details", []))
+            label.setToolTip("Последний поиск: " + data.get("saved_at", "—") + ("\n" + details if details else ""))
+
     def _refresh_stats(self):
         self.processed_value.setText(str(processed_count()))
         self._refresh_dashboard()
+        self._refresh_source_status()
         if playwright_browser_present():
             self.browser_status_value.setText("Ready")
             self.browser_status_value.setStyleSheet("color: #227722; font-weight: 700;")

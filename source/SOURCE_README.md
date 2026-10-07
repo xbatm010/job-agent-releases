@@ -32,7 +32,28 @@ and failed expanded APPLY checks. New local snapshots retain these fields;
 old history remains readable. CSV reasons retain the complete scoring and
 location explanations. Final employer Submit remains manual in Desktop.
 
-Run offline regression tests with:
+Desktop 2.9.0 introduces the light workspace: sidebar navigation, vacancy
+table and detail inspector, score explanations, favorites and source-health
+badges. Settings and updates are in a separate window. Narrow windows place
+the detail inspector below the table. Existing local profiles/history remain
+readable; thresholds and contact data are preserved.
 
-`python -m unittest discover -s source/tests -v`
+Desktop defaults to **search only** on the first 2.9.0 launch. Uncheck
+"Только поиск" to search and prepare forms in one run, or use the selected
+vacancy's "Подготовить отклик" action. Search-only needs no contact profile or
+CV; explicit preparation still validates both. The runtime receives
+SEARCH_ONLY=true and stores eligible results as READY_TO_PREPARE before
+returning without opening any application forms. The CLI default stays false
+when the variable is absent; the example environment enables search-only.
+
+discovery_status.json in STATE_DIR records the last search's source counts,
+empty/error/partial outcomes and diagnostic details. StartupJobs records HTTP
+status, parsed count, vacancy-link count and browser-fallback outcome. Zero
+parsed results are shown as needing review, not proof that no vacancies exist.
+Location-only employer names such as Prague are rejected. Explicit entry
+roles get priority in the limited browser-evidence pass.
+
+Run offline regression tests (including real Qt widgets) with:
+
+`QT_QPA_PLATFORM=offscreen python -m unittest discover -s source/tests -v`
 

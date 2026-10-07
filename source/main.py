@@ -17,6 +17,7 @@ from playwright.async_api import async_playwright
 
 load_dotenv()
 
+SEARCH_ONLY = os.getenv("SEARCH_ONLY", "false").lower() == "true"
 AUTO_SUBMIT = os.getenv("AUTO_SUBMIT", "false").lower() == "true"
 CONFIRMATION_GATE = os.getenv("CONFIRMATION_GATE", "false").lower() == "true"
 ALLOW_JOBS_HANDOFF = os.getenv("ALLOW_JOBS_HANDOFF", "false").lower() == "true"
@@ -869,6 +870,14 @@ def valid_company(name, source="generic"):
     name = clean(name)
     low = name.lower()
     if len(low) > 140 or len(low) < 2:
+        return False
+
+    # A metadata separator often leaves the location as the final segment.
+    # Whole-name matching preserves companies such as Prague Finance s.r.o.
+    location_names = ALLOWED_LOCATION_TERMS + BLOCKED_LOCATION_TERMS + [
+        "Czech Republic", "Česká republika", "Česko", "Remote", "Hybrid",
+    ]
+    if normalize_key_text(name) in {normalize_key_text(x) for x in location_names}:
         return False
 
     # Metadata can contain slogans or clipped teaser fragments that are not
@@ -1820,6 +1829,38 @@ def discovery_headers():
     }
 
 
+DISCOVERY_NOTES = {}
+DISCOVERY_FAILURES = {}
+
+
+def discovery_failure(source, message):
+    DISCOVERY_FAILURES.setdefault(source, []).append(message)
+
+
+def write_discovery_status(groups=None):
+    """Small atomic local status file consumed by Desktop, without page content."""
+    enabled = {"jobs.cz": SOURCE_JOBS_CZ, "prace.cz": SOURCE_PRACE_CZ, "startupjobs.cz": SOURCE_STARTUPJOBS_CZ}
+    sources = {}
+    for name, active in enabled.items():
+        count = len(groups.get(name, [])) if groups is not None else 0
+        failures = DISCOVERY_FAILURES.get(name, [])
+        status = "disabled" if not active else "searching" if groups is None else (
+            "partial" if count and failures else "ok" if count else "error" if failures else "empty"
+        )
+        sources[name] = {
+            "status": status, "count": count,
+            "details": (DISCOVERY_NOTES.get(name, []) + failures)[-8:],
+        }
+    data = {"saved_at": time.strftime("%Y-%m-%d %H:%M:%S"), "sources": sources}
+    path = STATE_DIR / "discovery_status.json"
+    try:
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    except OSError as exc:
+        print(f"⚠️ Could not save source diagnostics: {type(exc).__name__}")
+
+
 def discover_startupjobs_cz(session):
     if not SOURCE_STARTUPJOBS_CZ:
         return []
@@ -1830,13 +1871,23 @@ def discover_startupjobs_cz(session):
         try:
             r = session.get(url, timeout=20, headers=discovery_headers())
             r.raise_for_status()
-            for job in parse_startupjobs_search(r.text, query):
+            parsed = parse_startupjobs_search(r.text, query)
+            detail = (
+                f"HTTP {r.status_code}; parsed={len(parsed)}; "
+                f"vacancy_links={len(BeautifulSoup(r.text, 'html.parser').select('a[href*=\"/nabidka/\"]'))}; "
+                f"url={r.url}"
+            )
+            DISCOVERY_NOTES.setdefault("startupjobs.cz", []).append(detail)
+            if not parsed:
+                print(f"🔎 StartupJobs.cz diagnostics: {detail}")
+            for job in parsed:
                 key = history_key(job)
                 if key in seen:
                     continue
                 seen.add(key)
                 jobs.append(job)
         except Exception as exc:
+            discovery_failure("startupjobs.cz", f"HTTP: {type(exc).__name__}")
             print(f"⚠️ StartupJobs.cz search failed for '{query}': {exc}")
 
     jobs.sort(key=discovery_priority, reverse=True)
@@ -1906,19 +1957,26 @@ async def browser_discovery_fallback(
                         nav_delta,
                     )
                     if block_reason:
+                        discovery_failure(source_name.lower(), f"Browser: {block_reason}")
                         print(
                             f"🛡️ {source_name} {block_reason} detected for "
                             f"'{query}'; skipping this source for the current run."
                         )
                         break
 
-                    for job in parser(html, query):
+                    parsed = parser(html, query)
+                    detail = f"Browser parsed={len(parsed)}; url={page.url}"
+                    DISCOVERY_NOTES.setdefault(source_name.lower(), []).append(detail)
+                    if not parsed:
+                        print(f"🔎 {source_name} diagnostics: {detail}")
+                    for job in parsed:
                         key = history_key(job)
                         if key in seen:
                             continue
                         seen.add(key)
                         recovered.append(job)
                 except Exception as exc:
+                    discovery_failure(source_name.lower(), f"Browser: {type(exc).__name__}")
                     print(
                         f"⚠️ {source_name} browser discovery failed for "
                         f"'{query}': {type(exc).__name__}"
@@ -1929,6 +1987,7 @@ async def browser_discovery_fallback(
             await browser.close()
             browser = None
     except Exception as exc:
+        discovery_failure(source_name.lower(), f"Browser unavailable: {type(exc).__name__}")
         print(
             f"⚠️ {source_name} browser discovery unavailable: "
             f"{type(exc).__name__}: {exc}"
@@ -1974,6 +2033,7 @@ def discover_jobs_cz(session):
                 jobs.append(job)
 
         except Exception as exc:
+            discovery_failure("jobs.cz", f"{query}: {type(exc).__name__}")
             print(f"⚠️ Jobs.cz search failed for '{query}': {exc}")
 
     jobs.sort(key=discovery_priority, reverse=True)
@@ -2005,6 +2065,7 @@ def discover_prace_cz(session):
                 jobs.append(job)
 
         except Exception as exc:
+            discovery_failure("prace.cz", f"{query}: {type(exc).__name__}")
             print(f"⚠️ Prace.cz search failed for '{query}': {exc}")
 
     # Important: truncate only AFTER relevance/junior prioritization.
@@ -2022,6 +2083,9 @@ def interleave_sources(*groups):
 
 
 async def discover_all(session):
+    DISCOVERY_NOTES.clear()
+    DISCOVERY_FAILURES.clear()
+    write_discovery_status()
     jobs_cz = discover_jobs_cz(session)
     prace_cz = discover_prace_cz(session)
     startupjobs_cz = discover_startupjobs_cz(session)
@@ -2037,6 +2101,9 @@ async def discover_all(session):
             "StartupJobs.cz",
         )
 
+    write_discovery_status({"jobs.cz": jobs_cz, "prace.cz": prace_cz, "startupjobs.cz": startupjobs_cz})
+    if SOURCE_STARTUPJOBS_CZ and not startupjobs_cz:
+        print("⚠️ StartupJobs.cz: no parsed vacancies after HTTP/browser checks; see source diagnostics.")
     print(f"🔎 Jobs.cz discovery: {len(jobs_cz)} candidate(s)")
     print(f"🔎 Prace.cz discovery: {len(prace_cz)} candidate(s)")
     print(f"🔎 StartupJobs.cz discovery: {len(startupjobs_cz)} candidate(s)")
@@ -2507,6 +2574,16 @@ def merge_browser_evidence(
     return job
 
 
+def browser_evidence_priority(job):
+    # Explicit entry roles get the scarce browser slots before generic roles.
+    return (
+        is_entry_role(job.get("actual_title") or job.get("title", "")),
+        discovery_priority(job),
+        job.get("source") == "jobs.cz",
+        job.get("evidence_length", 0),
+    )
+
+
 async def browser_recover_weak_evidence(jobs):
     """
     Second-pass evidence recovery.
@@ -2519,15 +2596,7 @@ async def browser_recover_weak_evidence(jobs):
         if should_browser_recover_evidence(job)
     ]
 
-    candidates.sort(
-        key=lambda j: (
-            discovery_priority(j),
-            is_entry_role(j.get("actual_title") or j.get("title", "")),
-            j.get("source") == "jobs.cz",
-            j.get("evidence_length", 0),
-        ),
-        reverse=True,
-    )
+    candidates.sort(key=browser_evidence_priority, reverse=True)
 
     unique_candidates = []
     seen_evidence = set()
@@ -7132,7 +7201,8 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.8.2 — three-source data-role discovery")
+    print("🚀 Starting Job Agent v2.9.0 — three-source data-role discovery")
+    print(f"🔍 SEARCH_ONLY: {SEARCH_ONLY}")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
@@ -7195,7 +7265,7 @@ async def main():
         f"remote_outside_prague={ALLOW_FULL_REMOTE_OUTSIDE_PRAGUE}"
     )
 
-    if not Path(CV_PATH).exists():
+    if not SEARCH_ONLY and not Path(CV_PATH).is_file():
         raise FileNotFoundError(CV_PATH)
 
     processed = load_processed()
@@ -7359,6 +7429,12 @@ async def main():
             job["score"],
             "; ".join(job.get("reasons", [])),
         )
+
+    if SEARCH_ONLY:
+        for job in apply_candidates:
+            save_status(job, "READY_TO_PREPARE", job["score"], "; ".join(job.get("reasons", [])))
+        print(f"\n✅ Search-only complete: {len(ranked)} reviewed, {len(apply_candidates)} ready to prepare. No application forms opened.")
+        return
 
     if not apply_candidates:
         print("\n❌ No vacancy currently qualifies for APPLY.")

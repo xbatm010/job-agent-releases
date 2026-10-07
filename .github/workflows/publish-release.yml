@@ -214,7 +214,7 @@ jobs:
           from pathlib import Path
           desktop = Path("buildsrc/desktop.py").read_text(encoding="utf-8")
           assert "def _fit_window_to_screen" in desktop
-          assert "dashboard_buttons = [" in desktop
+          assert "VacancyDelegate" in desktop
           assert "dash_buttons = QGridLayout()" in desktop
           assert "dash_filters = QGridLayout()" in desktop
           assert "QSvgRenderer" in desktop
@@ -232,7 +232,7 @@ jobs:
           assert "self.indeed_check" not in desktop
           assert 'QCheckBox("Indeed.cz")' not in desktop
           assert "discovery-only" in desktop
-          assert "3 sources" in desktop
+          assert "source_badges" in desktop
           assert "4 sources" not in desktop
           assert 'saved.pop("source_indeed", None)' in desktop
           assert '"indeed.com" in url' in desktop
@@ -523,7 +523,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m unittest discover -s buildsrc/tests -v
+          QT_QPA_PLATFORM=offscreen python -m unittest discover -s buildsrc/tests -v
 
       - name: Build arm64 macOS app
         shell: bash
@@ -541,6 +541,7 @@ jobs:
             --icon "assets/JobAgent.icns" \
             --hidden-import main \
             --hidden-import updater \
+            --hidden-import desktop_theme \
             --hidden-import playwright \
             --hidden-import playwright.async_api \
             --hidden-import playwright.sync_api \
@@ -641,7 +642,7 @@ jobs:
           rm -rf source
           mkdir -p source
 
-          for f in desktop.py main.py updater.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md update_manifest.example.json; do
+          for f in desktop.py desktop_theme.py main.py updater.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md update_manifest.example.json; do
             if [ -f "buildsrc/$f" ]; then
               cp "buildsrc/$f" "source/$f"
             fi
