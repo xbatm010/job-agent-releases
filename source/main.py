@@ -1976,7 +1976,7 @@ def company_from_fp_url(url):
 
 
 def legacy_browser_profiles():
-    """Allow v29 to reuse authenticated browser profiles from earlier versions."""
+    """Reuse authenticated browser profiles from earlier Job Agent versions."""
     cwd = Path.cwd()
     return [
         cwd / "../../job_agent_v32/job_agent_v32/browser_profile",
