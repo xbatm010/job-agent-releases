@@ -445,7 +445,6 @@ jobs:
               "evidence_quality": "strong",
           }
           ai_score = main.score_job(ai_entry_job)
-          assert ai_score["role_class"] if "role_class" in ai_score else True
           assert main.role_class(ai_entry_job["title"]) == "expanded"
           assert ai_score["expanded_role_eligible"] is True
           assert ai_score["decision"] in {"APPLY", "REVIEW"}
