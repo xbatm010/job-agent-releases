@@ -82,10 +82,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.6.0", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.6.1", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.6.1"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -750,6 +750,12 @@ class JobAgentWindow(QMainWindow):
 
         profile_tab = QWidget()
         profile_layout = QFormLayout(profile_tab)
+        profile_layout.setRowWrapPolicy(
+            QFormLayout.RowWrapPolicy.WrapLongRows
+        )
+        profile_layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
         self.first_name_edit = QLineEdit()
         self.last_name_edit = QLineEdit()
         self.email_edit = QLineEdit()
@@ -770,6 +776,12 @@ class JobAgentWindow(QMainWindow):
 
         search_tab = QWidget()
         search_layout = QFormLayout(search_tab)
+        search_layout.setRowWrapPolicy(
+            QFormLayout.RowWrapPolicy.WrapLongRows
+        )
+        search_layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
 
         self.jobs_check = QCheckBox("Jobs.cz")
         self.prace_check = QCheckBox("Prace.cz")
@@ -781,13 +793,22 @@ class JobAgentWindow(QMainWindow):
         src_l.addStretch()
         search_layout.addRow("Sources", src_row)
 
-        self.prague_check = QCheckBox("Praha + allowed surroundings")
+        self.prague_check = QCheckBox("Praha + surroundings")
+        self.prague_check.setToolTip(
+            "Limit search to Praha and the allowed surrounding area."
+        )
         search_layout.addRow("Location", self.prague_check)
 
-        self.browser_check = QCheckBox("Render weak jobs in Chromium")
+        self.browser_check = QCheckBox("Chromium for weak jobs")
+        self.browser_check.setToolTip(
+            "Render vacancies with weak HTTP evidence in Chromium."
+        )
         search_layout.addRow("Evidence", self.browser_check)
 
-        self.cover_check = QCheckBox("Write Průvodní dopis in Czech")
+        self.cover_check = QCheckBox("Czech Průvodní dopis")
+        self.cover_check.setToolTip(
+            "Generate and fill a Czech cover letter when a supported field exists."
+        )
         search_layout.addRow("Cover letter", self.cover_check)
 
         self.max_apps_spin = QSpinBox()
@@ -798,6 +819,12 @@ class JobAgentWindow(QMainWindow):
 
         scoring_tab = QWidget()
         scoring_layout = QFormLayout(scoring_tab)
+        scoring_layout.setRowWrapPolicy(
+            QFormLayout.RowWrapPolicy.WrapLongRows
+        )
+        scoring_layout.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
 
         self.apply_spin = self._score_spin()
         self.verified_spin = self._score_spin()
