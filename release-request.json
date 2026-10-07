@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 24,
   "version": "2.7.9",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Desktop 2.7.9 fixes beta update delivery. Beta builds now derive their default update channel from bundled version.json instead of always defaulting to stable. Existing beta users with the old implicit stable default are migrated to beta automatically, while an explicit user channel choice is preserved. Changing the update channel in the Updates tab is now persisted immediately. This release also retains the v2.7.8 Indeed replacement-tab recovery fix.",
-  "last_published": "2.7.8",
-  "last_sha256": "8b46efc296da425a47399c105dbb17fdb18cb2eabe7889c7d7f838267950473a"
+  "last_published": "2.7.9",
+  "last_sha256": "9abc2482583a8e66bbe4a01a42aed042e4bafc9d09d3a411edd364a1b9d923ba"
 }
