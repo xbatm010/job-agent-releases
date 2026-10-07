@@ -171,6 +171,8 @@ def detect_legacy_profile() -> str:
 DEFAULTS = {
     "source_jobs": True,
     "source_prace": True,
+    "source_startupjobs": True,
+    "source_indeed": True,
     "max_applications": 3,
     "min_apply": 73,
     "verified_apply": 70,
@@ -427,6 +429,8 @@ def child_env(settings: dict) -> dict:
     return {
         "SOURCE_JOBS_CZ": str(settings["source_jobs"]).lower(),
         "SOURCE_PRACE_CZ": str(settings["source_prace"]).lower(),
+        "SOURCE_STARTUPJOBS_CZ": str(settings["source_startupjobs"]).lower(),
+        "SOURCE_INDEED_CZ": str(settings["source_indeed"]).lower(),
         "MAX_APPLICATIONS_PER_RUN": str(settings["max_applications"]),
         "MIN_APPLY_SCORE": str(settings["min_apply"]),
         "VERIFIED_TARGET_APPLY_SCORE": str(settings["verified_apply"]),
@@ -697,7 +701,7 @@ class JobAgentWindow(QMainWindow):
         title.setFont(f)
 
         subtitle = QLabel(
-            f"v{APP_VERSION} • Jobs.cz + Prace.cz • Prague • Czech cover letters"
+            f"v{APP_VERSION} • 4 sources • Prague • Czech cover letters"
         )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color: #666;")
@@ -785,13 +789,27 @@ class JobAgentWindow(QMainWindow):
 
         self.jobs_check = QCheckBox("Jobs.cz")
         self.prace_check = QCheckBox("Prace.cz")
+        self.startupjobs_check = QCheckBox("StartupJobs.cz")
+        self.indeed_check = QCheckBox("Indeed.cz")
+
         src_row = QWidget()
-        src_l = QHBoxLayout(src_row)
+        src_l = QGridLayout(src_row)
         src_l.setContentsMargins(0, 0, 0, 0)
-        src_l.addWidget(self.jobs_check)
-        src_l.addWidget(self.prace_check)
-        src_l.addStretch()
+        src_l.addWidget(self.jobs_check, 0, 0)
+        src_l.addWidget(self.prace_check, 0, 1)
+        src_l.addWidget(self.startupjobs_check, 1, 0)
+        src_l.addWidget(self.indeed_check, 1, 1)
+        src_l.setColumnStretch(0, 1)
+        src_l.setColumnStretch(1, 1)
         search_layout.addRow("Sources", src_row)
+
+        discovery_note = QLabel(
+            "StartupJobs.cz and Indeed.cz are discovery-only in this version: "
+            "they are scored and shown in Dashboard, but applications stay manual."
+        )
+        discovery_note.setWordWrap(True)
+        discovery_note.setStyleSheet("color: #666;")
+        search_layout.addRow(discovery_note)
 
         self.prague_check = QCheckBox("Praha + surroundings")
         self.prague_check.setToolTip(
@@ -989,6 +1007,8 @@ class JobAgentWindow(QMainWindow):
             "All sources",
             "jobs.cz",
             "prace.cz",
+            "startupjobs.cz",
+            "indeed.cz",
         ])
         self.dashboard_search.textChanged.connect(self._refresh_dashboard)
         self.dashboard_decision_filter.currentTextChanged.connect(
@@ -1170,6 +1190,12 @@ class JobAgentWindow(QMainWindow):
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([300, 680])
+
+    def _application_source_supported(self, record):
+        return str(record.get("source", "")).strip().lower() in {
+            "jobs.cz",
+            "prace.cz",
+        }
 
     def _selected_dashboard_record(self):
         row = self.dashboard_table.currentRow()
@@ -1367,6 +1393,15 @@ class JobAgentWindow(QMainWindow):
         if not record:
             return
 
+        if not self._application_source_supported(record):
+            QMessageBox.information(
+                self,
+                "Discovery-only source",
+                "StartupJobs.cz and Indeed.cz are currently discovery-only. "
+                "Use Open job and submit manually on the employer/job-board site.",
+            )
+            return
+
         try:
             score = int(float(record.get("score", 0) or 0))
         except Exception:
@@ -1423,6 +1458,15 @@ class JobAgentWindow(QMainWindow):
 
         record = self._selected_dashboard_record()
         if not record:
+            return
+
+        if not self._application_source_supported(record):
+            QMessageBox.information(
+                self,
+                "Discovery-only source",
+                "Prepare now is not enabled for StartupJobs.cz or Indeed.cz yet. "
+                "Use Open job to review and apply manually.",
+            )
             return
 
         status = str(record.get("status", "")).upper().strip()
@@ -1584,6 +1628,8 @@ class JobAgentWindow(QMainWindow):
 
         self.jobs_check.setChecked(bool(s["source_jobs"]))
         self.prace_check.setChecked(bool(s["source_prace"]))
+        self.startupjobs_check.setChecked(bool(s.get("source_startupjobs", True)))
+        self.indeed_check.setChecked(bool(s.get("source_indeed", True)))
         self.prague_check.setChecked(bool(s["prague_only"]))
         self.browser_check.setChecked(bool(s["browser_evidence"]))
         self.cover_check.setChecked(bool(s["czech_cover_letter"]))
@@ -1617,6 +1663,8 @@ class JobAgentWindow(QMainWindow):
             "phone": self.phone_edit.text().strip(),
             "source_jobs": self.jobs_check.isChecked(),
             "source_prace": self.prace_check.isChecked(),
+            "source_startupjobs": self.startupjobs_check.isChecked(),
+            "source_indeed": self.indeed_check.isChecked(),
             "prague_only": self.prague_check.isChecked(),
             "browser_evidence": self.browser_check.isChecked(),
             "czech_cover_letter": self.cover_check.isChecked(),
@@ -1651,7 +1699,12 @@ class JobAgentWindow(QMainWindow):
         if missing:
             return "Complete the Profile tab first: " + ", ".join(missing)
 
-        if not s["source_jobs"] and not s["source_prace"]:
+        if not any([
+            s["source_jobs"],
+            s["source_prace"],
+            s["source_startupjobs"],
+            s["source_indeed"],
+        ]):
             return "Enable at least one source."
 
         cv = Path(s["cv_path"]).expanduser()
