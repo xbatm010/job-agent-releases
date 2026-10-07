@@ -71,6 +71,12 @@ BROWSER_EVIDENCE_WAIT_MS = int(os.getenv(
 BROWSER_DISCOVERY_RELOAD_LIMIT = int(os.getenv(
     "BROWSER_DISCOVERY_RELOAD_LIMIT", "5"
 ))
+INDEED_MANUAL_CHALLENGE_WAIT_SECONDS = int(os.getenv(
+    "INDEED_MANUAL_CHALLENGE_WAIT_SECONDS", "300"
+))
+INDEED_MANUAL_CHALLENGE_POLL_MS = int(os.getenv(
+    "INDEED_MANUAL_CHALLENGE_POLL_MS", "1000"
+))
 BROWSER_EVIDENCE_LEVELS = {
     x.strip().lower() for x in os.getenv(
         "BROWSER_EVIDENCE_LEVELS", "weak"
@@ -1926,6 +1932,90 @@ def discover_indeed_cz(session):
     return jobs[:MAX_DISCOVERY_PER_SOURCE]
 
 
+async def wait_for_manual_access_challenge(page, source_name, query, target_url):
+    """
+    Pause on a visible anti-bot challenge and let the user solve it manually.
+
+    The agent never clicks, fills or otherwise interacts with the challenge.
+    Once the challenge disappears, the same browser session is reused and the
+    search page is parsed normally.
+    """
+    if not source_name.lower().startswith("indeed"):
+        return False, "", ""
+
+    wait_seconds = max(1, INDEED_MANUAL_CHALLENGE_WAIT_SECONDS)
+    poll_ms = max(250, INDEED_MANUAL_CHALLENGE_POLL_MS)
+
+    print(
+        f"🧑‍💻 {source_name}: manual verification required for '{query}'."
+    )
+    print(
+        "   Complete the CAPTCHA/security check yourself in the open Chromium "
+        "window. Job Agent will not click or solve it."
+    )
+    print(
+        f"   Waiting up to {wait_seconds} seconds; discovery will resume "
+        "automatically after verification."
+    )
+
+    elapsed_ms = 0
+    while elapsed_ms < wait_seconds * 1000:
+        await page.wait_for_timeout(poll_ms)
+        elapsed_ms += poll_ms
+
+        try:
+            html = await page.content()
+        except Exception:
+            continue
+
+        visible = ""
+        try:
+            body = page.locator("body").first
+            if await body.count():
+                visible = clean(await body.inner_text(timeout=1500))
+        except Exception:
+            pass
+
+        if is_access_challenge_page(html, visible):
+            continue
+
+        # Verification is gone. Indeed normally restores the requested search
+        # page automatically. If it lands elsewhere, revisit the original
+        # search URL once using the now-verified persistent session.
+        current = page.url or ""
+        if "/jobs" not in current.lower():
+            try:
+                await page.goto(
+                    target_url,
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
+                await page.wait_for_timeout(1200)
+                html = await page.content()
+                visible = ""
+                try:
+                    body = page.locator("body").first
+                    if await body.count():
+                        visible = clean(await body.inner_text(timeout=1500))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        if not is_access_challenge_page(html, visible):
+            print(
+                f"✅ {source_name}: manual verification completed; "
+                "resuming discovery."
+            )
+            return True, html, visible
+
+    print(
+        f"⌛ {source_name}: manual verification wait expired after "
+        f"{wait_seconds} seconds; skipping this source for the current run."
+    )
+    return False, "", ""
+
+
 async def browser_discovery_fallback(
     specs,
     parser,
@@ -2008,16 +2098,37 @@ async def browser_discovery_fallback(
                         nav_delta,
                     )
                     if block_reason:
-                        print(
-                            f"🛡️ {source_name} {block_reason} detected for "
-                            f"'{query}'; skipping this source for the current run."
-                        )
-                        if source_name.lower().startswith("indeed"):
+                        if (
+                            block_reason == "CAPTCHA/security challenge"
+                            and source_name.lower().startswith("indeed")
+                            and persistent
+                            and not headless
+                        ):
                             print(
-                                "   Indeed requires manual human verification; "
-                                "Job Agent will not retry or bypass the challenge."
+                                f"🛡️ {source_name} {block_reason} detected for "
+                                f"'{query}'."
                             )
-                        break
+                            verified, html_after, _ = (
+                                await wait_for_manual_access_challenge(
+                                    page,
+                                    source_name,
+                                    query,
+                                    url,
+                                )
+                            )
+                            if not verified:
+                                break
+                            html = html_after
+                            # Reset the reload counter baseline after the user
+                            # completes verification; challenge navigation should
+                            # not be treated as an automated reload loop.
+                            nav_before = navigation_events
+                        else:
+                            print(
+                                f"🛡️ {source_name} {block_reason} detected for "
+                                f"'{query}'; skipping this source for the current run."
+                            )
+                            break
 
                     for job in parser(html, query):
                         key = history_key(job)
@@ -7286,7 +7397,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.7.6 — four-source data-role discovery")
+    print("🚀 Starting Job Agent v2.7.7 — four-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
@@ -7319,6 +7430,10 @@ async def main():
         f"🧠 Browser evidence recovery: {BROWSER_EVIDENCE_RECOVERY} | "
         f"levels={sorted(BROWSER_EVIDENCE_LEVELS)} | "
         f"max={MAX_BROWSER_EVIDENCE_JOBS}"
+    )
+    print(
+        f"🧑‍💻 Indeed manual CAPTCHA wait: "
+        f"{INDEED_MANUAL_CHALLENGE_WAIT_SECONDS}s"
     )
     print(
         f"🛡️ Strict application CTA validation: "
