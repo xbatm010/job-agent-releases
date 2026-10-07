@@ -161,6 +161,16 @@ jobs:
           set -euo pipefail
           python -m py_compile buildsrc/main.py buildsrc/desktop.py buildsrc/updater.py
 
+          python - <<'PY'
+          from pathlib import Path
+          desktop = Path("buildsrc/desktop.py").read_text(encoding="utf-8")
+          assert "def _fit_window_to_screen" in desktop
+          assert "dashboard_buttons = [" in desktop
+          assert "dash_buttons = QGridLayout()" in desktop
+          assert "dash_filters = QGridLayout()" in desktop
+          print("Responsive Desktop layout smoke test: OK")
+          PY
+
           STATE_DIR="$RUNNER_TEMP/job-agent-smoke" \
           python - <<'PY'
           import os
