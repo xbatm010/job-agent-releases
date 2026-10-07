@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 25,
-  "version": "2.8.0",
+  "publish": true,
+  "request_id": 26,
+  "version": "2.8.1",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.8.0 removes Indeed completely from Job Agent automation. Discovery now uses only Jobs.cz, Prace.cz and StartupJobs.cz. All Indeed HTTP/Chromium discovery, CAPTCHA/manual-verification logic, source settings, Desktop checkbox/filter entries and Indeed-specific environment variables have been removed. StartupJobs remains discovery-only; Jobs.cz and Prace.cz retain supported application preparation. A release regression check now asserts that Indeed does not reappear in runtime, Desktop or .env. The v2.7.9 beta update-channel fix and all existing scoring, duplicate protection, CV handling and manual final Submit safety remain unchanged.",
+  "notes": "Desktop 2.8.1 is a full audit/polish release after the three-source migration. It corrects the Desktop header from 4 sources to 3, removes the retired source_indeed setting from existing local profiles, hides legacy Indeed vacancy/history records from Dashboard, updates source documentation, aligns runtime discovery defaults with Desktop/.env (80 per source, 12 browser-evidence jobs, 36 jobs reviewed), aligns MANUAL_CV_FALLBACK=true, removes the unused MAX_DISCOVERY_ITEMS setting, preserves real vacancy titles when detail pages expose generic headings such as 'Detail pozice', fixes cross-site dedupe priority to prefer application-capable sources then stronger evidence then Jobs.cz, and makes the Dashboard manual-queue filter follow the configured threshold instead of the stale 65–72 range. Beta GitHub releases are now marked as prereleases. Indeed remains intentionally outside Job Agent automation; only migration cleanup references remain. Manual final Submit safety is unchanged.",
   "last_published": "2.8.0",
   "last_sha256": "4160ce5c8fc95731019bab8fa81dcaf585134b139c72dce97c3f02f6716132eb"
 }
