@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 12,
   "version": "2.5.2",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.5.2 fixes horizontal overflow on smaller or scaled macOS displays. The startup window now fits the available screen, the left settings pane is constrained, long header text wraps, Dashboard filters use a compact two-row grid, and the nine Dashboard actions are arranged in a 3x3 grid instead of one wide row. Duplicate-application protections from 2.5.1 and manual final Submit safety remain unchanged."
+  "notes": "Desktop 2.5.2 fixes horizontal overflow on smaller or scaled macOS displays. The startup window now fits the available screen, the left settings pane is constrained, long header text wraps, Dashboard filters use a compact two-row grid, and the nine Dashboard actions are arranged in a 3x3 grid instead of one wide row. Duplicate-application protections from 2.5.1 and manual final Submit safety remain unchanged.",
+  "last_published": "2.5.2",
+  "last_sha256": "d096e38e8bbe1aca50bd2fa07e1077e95a44dc1e7764f9e4ab171ce36f7dfb56"
 }
