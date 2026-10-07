@@ -348,6 +348,18 @@ jobs:
 
           discovery_review = dict(safe, source="indeed.cz")
           assert not main.manual_review_apply_eligible(discovery_review, True)
+          assert "switching to normal Chromium discovery" in Path(
+              "buildsrc/main.py"
+          ).read_text(encoding="utf-8")
+          assert "persistent=True" in Path(
+              "buildsrc/main.py"
+          ).read_text(encoding="utf-8")
+          assert "headless=False" in Path(
+              "buildsrc/main.py"
+          ).read_text(encoding="utf-8")
+          assert startup[0]["title"] == "Data Analyst (CRM & Campaigns)"
+          print("Indeed browser fallback regression smoke test: OK")
+
           print("StartupJobs + Indeed discovery smoke test: OK")
 
           print("Dashboard persistence + manual queue safety smoke test: OK")
