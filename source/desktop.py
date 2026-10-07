@@ -81,10 +81,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.5.1", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.5.2", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.5.1"
+APP_VERSION = "2.5.2"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -596,7 +596,6 @@ class JobAgentWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"Job Agent Desktop v{APP_VERSION}")
-        self.resize(1050, 760)
         self.settings = load_settings()
 
         self.log_queue = None
@@ -610,6 +609,7 @@ class JobAgentWindow(QMainWindow):
 
         self._build_ui()
         self._load_widgets()
+        self._fit_window_to_screen()
 
         self.timer = QTimer(self)
         self.timer.setInterval(120)
@@ -631,6 +631,27 @@ class JobAgentWindow(QMainWindow):
                 lambda: self.check_for_updates(silent=True),
             )
 
+    def _fit_window_to_screen(self):
+        """
+        Keep the initial window comfortably inside the usable desktop area.
+        Widget layouts remain resizable; this only chooses a sensible startup
+        size and minimum size for smaller Mac displays / scaled resolutions.
+        """
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(960, 720)
+            self.setMinimumSize(760, 560)
+            return
+
+        available = screen.availableGeometry()
+        target_w = min(1050, max(760, int(available.width() * 0.92)))
+        target_h = min(760, max(560, int(available.height() * 0.90)))
+        self.setMinimumSize(
+            min(760, max(680, int(available.width() * 0.72))),
+            min(560, max(500, int(available.height() * 0.62))),
+        )
+        self.resize(target_w, target_h)
+
     def _build_ui(self):
         root = QWidget()
         self.setCentralWidget(root)
@@ -646,8 +667,9 @@ class JobAgentWindow(QMainWindow):
         title.setFont(f)
 
         subtitle = QLabel(
-            f"v{APP_VERSION} • Jobs.cz + Prace.cz • Prague filter • Czech cover letters"
+            f"v{APP_VERSION} • Jobs.cz + Prace.cz • Prague • Czech cover letters"
         )
+        subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color: #666;")
 
         title_box.addWidget(title)
@@ -665,6 +687,7 @@ class JobAgentWindow(QMainWindow):
         safety = QLabel(
             "🔒 Final employer Submit is locked to manual confirmation."
         )
+        safety.setWordWrap(True)
         safety.setStyleSheet(
             "padding: 9px; border: 1px solid #d8d8d8; "
             "border-radius: 7px; background: #f7f7f7;"
@@ -675,6 +698,8 @@ class JobAgentWindow(QMainWindow):
         outer.addWidget(splitter, 1)
 
         left = QWidget()
+        left.setMinimumWidth(250)
+        left.setMaximumWidth(340)
         left_layout = QVBoxLayout(left)
 
         stats = QGroupBox("Overview")
@@ -873,7 +898,7 @@ class JobAgentWindow(QMainWindow):
         dash_header.addWidget(self.refresh_dashboard_btn)
         dashboard_layout.addLayout(dash_header)
 
-        dash_filters = QHBoxLayout()
+        dash_filters = QGridLayout()
         self.dashboard_search = QLineEdit()
         self.dashboard_search.setPlaceholderText("Search position or company…")
         self.dashboard_decision_filter = QComboBox()
@@ -900,9 +925,11 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_source_filter.currentTextChanged.connect(
             self._refresh_dashboard
         )
-        dash_filters.addWidget(self.dashboard_search, 2)
-        dash_filters.addWidget(self.dashboard_decision_filter, 1)
-        dash_filters.addWidget(self.dashboard_source_filter, 1)
+        dash_filters.addWidget(self.dashboard_search, 0, 0, 1, 2)
+        dash_filters.addWidget(self.dashboard_decision_filter, 1, 0)
+        dash_filters.addWidget(self.dashboard_source_filter, 1, 1)
+        dash_filters.setColumnStretch(0, 1)
+        dash_filters.setColumnStretch(1, 1)
         dashboard_layout.addLayout(dash_filters)
 
         self.dashboard_table = QTableWidget(0, 5)
@@ -928,6 +955,7 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_table.horizontalHeader().setSectionResizeMode(
             2, QHeaderView.Stretch
         )
+        self.dashboard_table.setMinimumWidth(0)
         self.dashboard_table.horizontalHeader().setSectionResizeMode(
             3, QHeaderView.ResizeToContents
         )
@@ -939,7 +967,7 @@ class JobAgentWindow(QMainWindow):
         )
         dashboard_layout.addWidget(self.dashboard_table, 2)
 
-        dash_buttons = QHBoxLayout()
+        dash_buttons = QGridLayout()
         self.open_job_btn = QPushButton("Open job")
         self.manual_apply_btn = QPushButton("Queue application")
         self.prepare_now_btn = QPushButton("Prepare now")
@@ -972,7 +1000,7 @@ class JobAgentWindow(QMainWindow):
             self._copy_selected_cover_letter
         )
 
-        for button in [
+        dashboard_buttons = [
             self.open_job_btn,
             self.manual_apply_btn,
             self.prepare_now_btn,
@@ -982,8 +1010,13 @@ class JobAgentWindow(QMainWindow):
             self.clear_override_btn,
             self.cover_letter_btn,
             self.copy_cover_letter_btn,
-        ]:
-            dash_buttons.addWidget(button)
+        ]
+        for index, button in enumerate(dashboard_buttons):
+            row, col = divmod(index, 3)
+            button.setMinimumWidth(0)
+            dash_buttons.addWidget(button, row, col)
+        for col in range(3):
+            dash_buttons.setColumnStretch(col, 1)
         dashboard_layout.addLayout(dash_buttons)
 
         self.dashboard_detail = QTextEdit()
@@ -1062,7 +1095,9 @@ class JobAgentWindow(QMainWindow):
         self.workspace_tabs.addTab(log_page, "Live log")
 
         splitter.addWidget(right)
-        splitter.setSizes([390, 660])
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([300, 680])
 
     def _selected_dashboard_record(self):
         row = self.dashboard_table.currentRow()
