@@ -82,10 +82,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.7.0", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.7.1", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.7.1"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -469,8 +469,8 @@ def child_env(settings: dict) -> dict:
 
         # v52 discovery defaults.
         "MAX_DISCOVERY_PER_SOURCE": "80",
-        "MAX_BROWSER_EVIDENCE_JOBS": "10",
-        "MAX_JOBS_TO_REVIEW": "24",
+        "MAX_BROWSER_EVIDENCE_JOBS": "12",
+        "MAX_JOBS_TO_REVIEW": "36",
         "STRICT_APPLICATION_ROUTE_VALIDATION": "true",
         "ALLOW_SAME_HOST_REPLY_FALLBACK": "true",
     }
