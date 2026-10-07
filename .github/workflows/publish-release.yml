@@ -217,6 +217,23 @@ jobs:
           ) == "Example Analytics s.r.o."
           print("Company extraction smoke test: OK")
 
+          submitted = dict(job)
+          submitted.update({
+              "job_id": "jobs.cz:2001320839",
+              "url": "https://www.jobs.cz/rpd/2001320839/",
+          })
+          main.save_status(
+              submitted,
+              "SUBMITTED_MANUALLY",
+              71,
+              "duplicate guard smoke",
+          )
+          assert "job:2001320839" in main.load_processed()
+          assert main.canonicalize_saved_history_id(
+              "jobs.cz:2001320839"
+          ) == "job:2001320839"
+          print("Duplicate-application history guard smoke test: OK")
+
           print("Dashboard persistence + manual queue safety smoke test: OK")
           PY
 
