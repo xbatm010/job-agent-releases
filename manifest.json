@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.7.4",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.4/job-agent-2.7.4-macos.zip",
-      "sha256": "3c02c185529a43a9d77820e85889f3a629973f2c5c9299fc11151d71b7010b8d",
-      "notes": "Desktop 2.7.4 hotfix fixes a Jobs.cz application-preparation crash caused by h1_text being referenced before initialization during browser company extraction. h1_text is now resolved before metadata/title parsing, so APPLY candidates can continue into company extraction and form preparation. A regression smoke test reproduces the metadata path that crashed in 2.7.3. The v2.7.3 scoring, Indeed CAPTCHA/reload-loop handling, discovery rules, manual final Submit safety and thresholds are unchanged.",
+      "version": "2.7.5",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.5/job-agent-2.7.5-macos.zip",
+      "sha256": "44f497c908972831d36619738c818900c8dcd40591383428ed8ab3ca1b5d26d0",
+      "notes": "Desktop 2.7.5 is a small polish hotfix after successful 2.7.4 submissions. It rejects metadata slogan/teaser fragments such as '...kde jinde.' from company extraction so unknown employers remain unknown instead of being mislabeled, and replaces the legacy 'v51 will detect the confirmation automatically' log text with version-neutral wording. Scoring, source discovery, Indeed CAPTCHA handling, application preparation, manual final Submit safety and the v2.7.4 h1_text fix are unchanged.",
       "min_version": "2.3.1"
     }
   }

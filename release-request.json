@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 20,
   "version": "2.7.5",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Desktop 2.7.5 is a small polish hotfix after successful 2.7.4 submissions. It rejects metadata slogan/teaser fragments such as '...kde jinde.' from company extraction so unknown employers remain unknown instead of being mislabeled, and replaces the legacy 'v51 will detect the confirmation automatically' log text with version-neutral wording. Scoring, source discovery, Indeed CAPTCHA handling, application preparation, manual final Submit safety and the v2.7.4 h1_text fix are unchanged.",
-  "last_published": "2.7.4",
-  "last_sha256": "3c02c185529a43a9d77820e85889f3a629973f2c5c9299fc11151d71b7010b8d"
+  "last_published": "2.7.5",
+  "last_sha256": "44f497c908972831d36619738c818900c8dcd40591383428ed8ab3ca1b5d26d0"
 }
