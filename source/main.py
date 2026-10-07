@@ -1560,6 +1560,63 @@ def _card_for_anchor(a):
     return a.parent
 
 
+def split_startupjobs_heading(raw_title):
+    """
+    StartupJobs search cards sometimes expose one long accessible heading:
+    company + vacancy + salary/work-mode/location badges. Split it
+    conservatively so discovery preview stays readable.
+    """
+    raw = clean(raw_title)
+    if not raw:
+        return "", ""
+
+    role_patterns = [
+        r"\bData\s*&\s*BI\b",
+        r"\bData\s+Analyst\b",
+        r"\bData\s+Analytik\b",
+        r"\bDatov(?:ý|á|e|ého|ému)?\s*(?:/\s*á)?\s*analyt",
+        r"\bBusiness\s+(?:Data\s+)?Analyst\b",
+        r"\bBI\s+Analyt",
+        r"\bReporting\s+Analyst\b",
+        r"\bSpecialista\b",
+        r"\bSpecialistka\b",
+        r"\bIT\s+Analyt",
+        r"\bJunior\b",
+        r"\bSenior(?:ní)?\b",
+        r"\bDevOps\b",
+        r"\bJava\b",
+        r"\bSocial\s+Media\b",
+    ]
+
+    start = None
+    for pattern in role_patterns:
+        m = re.search(pattern, raw, re.I)
+        if m and (start is None or m.start() < start):
+            start = m.start()
+
+    company = ""
+    title = raw
+    if start is not None and start > 0:
+        candidate_company = clean(raw[:start]).strip(" -|•")
+        if valid_company(candidate_company, "search_card"):
+            company = candidate_company
+            title = clean(raw[start:])
+
+    # Strip badges appended to the accessible card heading. Salary is only
+    # treated as a suffix when it is followed by a work-mode/location badge.
+    title = re.sub(
+        r"\s+(?:\d[\d\s.]*\s*[-–]\s*\d[\d\s.]*\s*(?:Kč|CZK)\s*/\s*"
+        r"(?:měsíc|mesic|month)\s+)?"
+        r"(?:Hybrid(?:\s*,\s*Onsite)?|Onsite|Remote)\b.*$",
+        "",
+        title,
+        flags=re.I,
+    )
+    title = clean(title).strip(" -|•")
+
+    return title or raw, company
+
+
 def parse_startupjobs_search(html, query):
     soup = BeautifulSoup(html, "html.parser")
     jobs, seen = [], set()
@@ -1578,11 +1635,12 @@ def parse_startupjobs_search(html, query):
         heading = None
         if card:
             heading = card.find(["h1", "h2", "h3", "h4"])
-        title = clean(
+        raw_title = clean(
             heading.get_text(" ", strip=True)
             if heading
             else a.get_text(" ", strip=True)
         )
+        title, inferred_company = split_startupjobs_heading(raw_title)
         if (
             not title
             or len(title) > 180
@@ -1590,8 +1648,8 @@ def parse_startupjobs_search(html, query):
         ):
             continue
 
-        company = ""
-        if card:
+        company = inferred_company
+        if card and not company:
             for sel in [
                 'a[href*="/startup/"]',
                 '[class*="company"]',
@@ -1720,6 +1778,42 @@ def parse_indeed_search(html, query):
             "discovery_only": True,
         })
     return jobs
+
+
+def dedupe_indeed_discovery(jobs):
+    """
+    Indeed can surface the same vacancy under multiple jk values across
+    different search queries. Deduplicate before enrichment/browser evidence
+    using the stable job id first and then title+company+location.
+    """
+    out = []
+    seen_ids = set()
+    seen_semantic = set()
+
+    for job in jobs:
+        jid = clean(str(job.get("job_id", "") or "")).lower()
+        if jid and jid in seen_ids:
+            continue
+
+        title = normalize_key_text(
+            job.get("actual_title") or job.get("title", "")
+        )
+        company = normalize_key_text(job.get("company", ""))
+        location = normalize_key_text(job.get("location", ""))
+
+        semantic = ""
+        if title and company:
+            semantic = f"{title}|{company}|{location}"
+            if semantic in seen_semantic:
+                continue
+
+        if jid:
+            seen_ids.add(jid)
+        if semantic:
+            seen_semantic.add(semantic)
+        out.append(job)
+
+    return out
 
 
 def discovery_headers():
@@ -2008,6 +2102,14 @@ async def discover_all(session):
                 "Chromium. The source will be skipped for this run."
             )
 
+    indeed_before_dedupe = len(indeed_cz)
+    indeed_cz = dedupe_indeed_discovery(indeed_cz)
+    if indeed_before_dedupe != len(indeed_cz):
+        print(
+            f"🧹 Indeed.cz early dedupe: "
+            f"{indeed_before_dedupe} → {len(indeed_cz)}"
+        )
+
     print(f"🔎 Jobs.cz discovery: {len(jobs_cz)} candidate(s)")
     print(f"🔎 Prace.cz discovery: {len(prace_cz)} candidate(s)")
     print(f"🔎 StartupJobs.cz discovery: {len(startupjobs_cz)} candidate(s)")
@@ -2294,6 +2396,34 @@ def evidence_quality_for_text(text):
     return "weak"
 
 
+def is_access_challenge_page(rendered_html="", rendered_text=""):
+    """
+    Detect block/challenge pages so they never replace a real vacancy title or
+    description collected from the search card / HTTP detail.
+    """
+    soup = BeautifulSoup(rendered_html or "", "html.parser")
+    page_title = clean(soup.title.get_text(" ", strip=True) if soup.title else "")
+    combined = clean(" ".join([
+        page_title,
+        rendered_text or "",
+        soup.get_text(" ", strip=True)[:2500] if soup else "",
+    ])).lower()
+
+    markers = [
+        "access denied",
+        "verify you are human",
+        "are you a robot",
+        "unusual traffic",
+        "security check",
+        "captcha",
+        "temporarily blocked",
+        "request blocked",
+        "your request has been blocked",
+        "checking your browser",
+    ]
+    return any(marker in combined for marker in markers)
+
+
 def merge_browser_evidence(
     job,
     rendered_html,
@@ -2309,6 +2439,26 @@ def merge_browser_evidence(
     before_len = len(job.get("description", ""))
     before_quality = job.get("evidence_quality", "weak")
 
+    if is_access_challenge_page(rendered_html, rendered_text):
+        job["browser_challenge_detected"] = True
+        job["browser_evidence_url"] = current_url or job.get("url", "")
+        job["browser_evidence_before"] = {
+            "quality": before_quality,
+            "length": before_len,
+        }
+        job["browser_evidence_after"] = {
+            "quality": before_quality,
+            "length": before_len,
+        }
+        # Preserve search-card / HTTP vacancy data exactly as-is.
+        job["evidence_quality"] = before_quality
+        job["evidence_length"] = before_len
+        job["role_class"] = role_class(
+            job.get("actual_title") or job.get("title", "")
+        )
+        return job
+
+    job.pop("browser_challenge_detected", None)
     soup = BeautifulSoup(rendered_html or "", "html.parser")
     structured = jsonld_jobposting(soup)
 
@@ -2517,10 +2667,13 @@ async def browser_recover_weak_evidence(jobs):
                 after_quality = job.get("evidence_quality", "weak")
                 after_len = len(job.get("description", ""))
 
-                marker = "⬆️" if (
-                    after_quality != before_quality
-                    or after_len > before_len
-                ) else "↔️"
+                if job.get("browser_challenge_detected"):
+                    marker = "🛡️"
+                else:
+                    marker = "⬆️" if (
+                        after_quality != before_quality
+                        or after_len > before_len
+                    ) else "↔️"
 
                 print(
                     f"   {marker} {index}/{len(candidates)} "
@@ -6995,7 +7148,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.7 — four-source data-role discovery")
+    print("🚀 Starting Job Agent v2.7.2 — four-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
