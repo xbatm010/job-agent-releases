@@ -81,10 +81,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.4.0", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.5.0", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.5.0"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -276,6 +276,21 @@ def write_job_override(job_id: str, decision: str) -> None:
     )
 
 
+def delete_job_override(job_id: str) -> bool:
+    if not job_id:
+        return False
+    data = load_job_overrides()
+    if job_id not in data:
+        return False
+    del data[job_id]
+    OVERRIDES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    OVERRIDES_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return True
+
+
 class QueueWriter(io.TextIOBase):
     def __init__(self, q):
         self.q = q
@@ -398,6 +413,46 @@ def agent_worker(settings: dict, q) -> None:
 
 
 
+def prepare_job_worker(settings: dict, job: dict, q) -> None:
+    writer = QueueWriter(q)
+    sys.stdout = writer
+    sys.stderr = writer
+
+    try:
+        if hasattr(os, "setsid"):
+            try:
+                os.setsid()
+            except Exception:
+                pass
+
+        os.chdir(RUNTIME_DIR)
+        for key, value in child_env(settings).items():
+            os.environ[key] = value
+
+        cv = Path(settings["cv_path"]).expanduser()
+        if not cv.exists():
+            raise FileNotFoundError(f"CV not found: {cv}")
+
+        profile = Path(settings["browser_profile"]).expanduser()
+        profile.mkdir(parents=True, exist_ok=True)
+
+        q.put(("state", "running"))
+
+        import asyncio
+        import main as agent_main
+
+        asyncio.run(agent_main.prepare_single_job(job))
+        writer.flush()
+        q.put(("finished", 0))
+    except KeyboardInterrupt:
+        writer.flush()
+        q.put(("finished", 130))
+    except Exception as exc:
+        writer.flush()
+        q.put(("log", f"❌ Prepare now error: {type(exc).__name__}: {exc}"))
+        q.put(("finished", 1))
+
+
 class UpdateCheckWorker(QObject):
     finished = Signal(object, object)
 
@@ -471,6 +526,7 @@ class JobAgentWindow(QMainWindow):
         self.update_thread = None
         self.update_worker = None
         self.available_update = None
+        self.dashboard_all_records = []
         self.dashboard_records = []
 
         self._build_ui()
@@ -738,6 +794,38 @@ class JobAgentWindow(QMainWindow):
         dash_header.addWidget(self.refresh_dashboard_btn)
         dashboard_layout.addLayout(dash_header)
 
+        dash_filters = QHBoxLayout()
+        self.dashboard_search = QLineEdit()
+        self.dashboard_search.setPlaceholderText("Search position or company…")
+        self.dashboard_decision_filter = QComboBox()
+        self.dashboard_decision_filter.addItems([
+            "All",
+            "APPLY",
+            "REVIEW",
+            "QUEUED",
+            "INTERESTING",
+            "SKIP",
+            "SUBMITTED",
+            "Manual 65–72",
+        ])
+        self.dashboard_source_filter = QComboBox()
+        self.dashboard_source_filter.addItems([
+            "All sources",
+            "jobs.cz",
+            "prace.cz",
+        ])
+        self.dashboard_search.textChanged.connect(self._refresh_dashboard)
+        self.dashboard_decision_filter.currentTextChanged.connect(
+            self._refresh_dashboard
+        )
+        self.dashboard_source_filter.currentTextChanged.connect(
+            self._refresh_dashboard
+        )
+        dash_filters.addWidget(self.dashboard_search, 2)
+        dash_filters.addWidget(self.dashboard_decision_filter, 1)
+        dash_filters.addWidget(self.dashboard_source_filter, 1)
+        dashboard_layout.addLayout(dash_filters)
+
         self.dashboard_table = QTableWidget(0, 5)
         self.dashboard_table.setHorizontalHeaderLabels(
             ["Score", "Position", "Company", "Decision", "Status"]
@@ -775,14 +863,17 @@ class JobAgentWindow(QMainWindow):
         dash_buttons = QHBoxLayout()
         self.open_job_btn = QPushButton("Open job")
         self.manual_apply_btn = QPushButton("Queue application")
+        self.prepare_now_btn = QPushButton("Prepare now")
         self.review_override_btn = QPushButton("Set REVIEW")
         self.interesting_btn = QPushButton("Mark interesting")
         self.skip_job_btn = QPushButton("Skip")
+        self.clear_override_btn = QPushButton("Clear override")
         self.cover_letter_btn = QPushButton("Show cover letter")
         self.copy_cover_letter_btn = QPushButton("Copy cover letter")
 
         self.open_job_btn.clicked.connect(self._open_selected_job)
         self.manual_apply_btn.clicked.connect(self._queue_selected_application)
+        self.prepare_now_btn.clicked.connect(self._prepare_selected_now)
         self.review_override_btn.clicked.connect(
             lambda: self._set_selected_override("REVIEW")
         )
@@ -791,6 +882,9 @@ class JobAgentWindow(QMainWindow):
         )
         self.skip_job_btn.clicked.connect(
             lambda: self._set_selected_override("SKIP")
+        )
+        self.clear_override_btn.clicked.connect(
+            self._clear_selected_override
         )
         self.cover_letter_btn.clicked.connect(
             self._show_selected_cover_letter
@@ -802,9 +896,11 @@ class JobAgentWindow(QMainWindow):
         for button in [
             self.open_job_btn,
             self.manual_apply_btn,
+            self.prepare_now_btn,
             self.review_override_btn,
             self.interesting_btn,
             self.skip_job_btn,
+            self.clear_override_btn,
             self.cover_letter_btn,
             self.copy_cover_letter_btn,
         ]:
@@ -930,14 +1026,59 @@ class JobAgentWindow(QMainWindow):
 
         self.dashboard_detail.setPlainText("\n".join(details))
 
+    def _dashboard_record_matches_filters(self, record, overrides):
+        query = self.dashboard_search.text().strip().lower()
+        if query:
+            haystack = " ".join([
+                str(record.get("title", "")),
+                str(record.get("company", "")),
+                str(record.get("location", "")),
+            ]).lower()
+            if query not in haystack:
+                return False
+
+        source_filter = self.dashboard_source_filter.currentText().strip()
+        if (
+            source_filter != "All sources"
+            and str(record.get("source", "")).strip() != source_filter
+        ):
+            return False
+
+        jid = str(record.get("job_id", ""))
+        override = str(
+            overrides.get(jid, {}).get("decision", "")
+        ).upper().strip()
+        decision = override or str(record.get("decision", "")).upper().strip()
+        display_decision = "QUEUED" if override == "MANUAL_APPLY" else decision
+        status = str(record.get("status", "")).upper().strip()
+
+        selected = self.dashboard_decision_filter.currentText().strip()
+        if selected == "All":
+            return True
+        if selected == "SUBMITTED":
+            return status in TERMINAL_STATUSES
+        if selected == "Manual 65–72":
+            try:
+                score = int(float(record.get("score", 0) or 0))
+            except Exception:
+                score = 0
+            return 65 <= score <= 72 and display_decision in {
+                "REVIEW", "QUEUED", "APPLY"
+            }
+        return display_decision == selected
+
     def _refresh_dashboard(self):
         selected_id = ""
         selected = self._selected_dashboard_record()
         if selected:
             selected_id = str(selected.get("job_id", ""))
 
-        self.dashboard_records = load_vacancy_records()
+        self.dashboard_all_records = load_vacancy_records()
         overrides = load_job_overrides()
+        self.dashboard_records = [
+            record for record in self.dashboard_all_records
+            if self._dashboard_record_matches_filters(record, overrides)
+        ]
 
         self.dashboard_table.setRowCount(len(self.dashboard_records))
         restore_row = -1
@@ -972,7 +1113,7 @@ class JobAgentWindow(QMainWindow):
         )
 
         application_records = [
-            r for r in self.dashboard_records
+            r for r in self.dashboard_all_records
             if str(r.get("status", "")) not in {
                 "",
                 "REVIEW_PENDING",
@@ -1071,6 +1212,119 @@ class JobAgentWindow(QMainWindow):
         self._append_log(
             f"Manual queue: {record.get('title', '')} → next-run preparation"
         )
+
+    def _prepare_selected_now(self):
+        if self.agent_process and self.agent_process.is_alive():
+            QMessageBox.information(
+                self,
+                "Prepare now",
+                "Stop the current Job Agent run first.",
+            )
+            return
+
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+
+        status = str(record.get("status", "")).upper().strip()
+        if status in TERMINAL_STATUSES:
+            QMessageBox.information(
+                self,
+                "Prepare now",
+                "This vacancy is already recorded as submitted.",
+            )
+            return
+
+        try:
+            score = int(float(record.get("score", 0) or 0))
+        except Exception:
+            score = 0
+
+        overrides = load_job_overrides()
+        override = str(
+            overrides.get(str(record.get("job_id", "")), {}).get(
+                "decision", ""
+            )
+        ).upper().strip()
+        decision = str(record.get("decision", "")).upper().strip()
+
+        allowed = decision == "APPLY" or override == "MANUAL_APPLY"
+        if decision == "REVIEW" and score >= self.manual_queue_spin.value():
+            allowed = True
+
+        if not allowed:
+            QMessageBox.information(
+                self,
+                "Prepare now",
+                "Prepare now is available for APPLY jobs or REVIEW jobs "
+                f"with score ≥ {self.manual_queue_spin.value()}. "
+                "The agent will re-check the vacancy before opening the form.",
+            )
+            return
+
+        settings = self._collect_settings()
+        error = self._validate_settings(settings)
+        if error:
+            QMessageBox.warning(self, "Job Agent", error)
+            return
+
+        if not playwright_browser_present():
+            QMessageBox.warning(
+                self,
+                "Playwright Chromium missing",
+                "Playwright Chromium is not installed in the external browser cache.\n\n"
+                f"Run this once in Terminal:\n\n{playwright_install_command()}",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Prepare now",
+            "Prepare only this vacancy now?\n\n"
+            "The agent will re-check score, strong evidence, location and "
+            "experience blockers, then fill supported fields and stop before "
+            "the employer's final Submit button.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        save_settings(settings)
+        self.settings = settings
+        self.log_queue = mp.get_context("spawn").Queue()
+        self.agent_process = mp.get_context("spawn").Process(
+            target=prepare_job_worker,
+            args=(settings, dict(record), self.log_queue),
+            daemon=False,
+        )
+        self.agent_process.start()
+        self.run_started_at = time.time()
+        self._set_running(True)
+        self.workspace_tabs.setCurrentIndex(2)
+        self._append_log("")
+        self._append_log("═" * 72)
+        self._append_log(
+            f"Prepare now: {record.get('title', 'selected vacancy')}"
+        )
+        self._append_log("═" * 72)
+
+    def _clear_selected_override(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        jid = str(record.get("job_id", "")).strip()
+        if delete_job_override(jid):
+            self._append_log(
+                f"Dashboard override cleared: {record.get('title', '')}"
+            )
+            self._refresh_dashboard()
+        else:
+            QMessageBox.information(
+                self,
+                "Clear override",
+                "This vacancy has no Dashboard override.",
+            )
 
     def _set_selected_override(self, decision):
         record = self._selected_dashboard_record()
@@ -1313,6 +1567,8 @@ class JobAgentWindow(QMainWindow):
     def _set_running(self, running):
         self.start_btn.setEnabled(not running)
         self.stop_btn.setEnabled(running)
+        if hasattr(self, "prepare_now_btn"):
+            self.prepare_now_btn.setEnabled(not running)
 
         if running:
             self.status_label.setText("● Running")
