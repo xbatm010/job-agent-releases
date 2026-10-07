@@ -536,7 +536,7 @@ def child_env(settings: dict) -> dict:
         "MANUAL_SUBMIT_HOLD": "true",
         "CONTINUE_AFTER_APPLICATION_ERROR": "true",
 
-        # v52 discovery defaults.
+        # Discovery/runtime defaults used by the Desktop child process.
         "MAX_DISCOVERY_PER_SOURCE": "80",
         "MAX_BROWSER_EVIDENCE_JOBS": "12",
         "MAX_JOBS_TO_REVIEW": "36",
