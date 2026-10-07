@@ -13,7 +13,8 @@ source bundle.
 The user completes the local Profile tab and selects a CV once. Future updates
 keep those local settings.
 
-Discovery sources in Desktop 2.7 include Jobs.cz, Prace.cz, StartupJobs.cz and
-Indeed.cz. StartupJobs.cz and Indeed.cz are discovery-only in 2.7: vacancies
-can be scored, deduplicated, reviewed and opened from Dashboard, but they do not
-enter the automated application-preparation queue.
+Discovery sources in Desktop 2.8 are Jobs.cz, Prace.cz and StartupJobs.cz.
+StartupJobs.cz is discovery-only: vacancies can be scored, deduplicated,
+reviewed and opened from Dashboard, but they do not enter the automated
+application-preparation queue. Indeed is intentionally not integrated and is
+reviewed manually outside Job Agent.
