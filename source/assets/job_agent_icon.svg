@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="78%">
+      <stop offset="0%" stop-color="#0b2d68"/>
+      <stop offset="58%" stop-color="#061f4f"/>
+      <stop offset="100%" stop-color="#031536"/>
+    </radialGradient>
+    <linearGradient id="caseTop" x1="0" y1="0" x2="0.75" y2="1">
+      <stop offset="0%" stop-color="#21c8ff"/>
+      <stop offset="35%" stop-color="#087df0"/>
+      <stop offset="100%" stop-color="#0743c5"/>
+    </linearGradient>
+    <linearGradient id="caseBody" x1="0.1" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#0e63e5"/>
+      <stop offset="58%" stop-color="#0642bc"/>
+      <stop offset="100%" stop-color="#062e88"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#18b8ff"/>
+      <stop offset="60%" stop-color="#0865dc"/>
+      <stop offset="100%" stop-color="#073b9d"/>
+    </linearGradient>
+    <linearGradient id="check" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#24f0d4"/>
+      <stop offset="100%" stop-color="#03cddd"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0.25" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffd33d"/>
+      <stop offset="46%" stop-color="#ff9f00"/>
+      <stop offset="100%" stop-color="#ff5a00"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18"/>
+      <feOffset dy="18"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0.02  0 0 0 0 0.09  0 0 0 0.55 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="210" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <!-- Handle -->
+    <path d="M365 248c0-69 52-121 121-121h99c69 0 121 52 121 121v89h-76v-72c0-34-23-58-57-58h-75c-34 0-57 24-57 58v72h-76z" fill="url(#handle)"/>
+
+    <!-- Briefcase body -->
+    <rect x="188" y="322" width="610" height="445" rx="72" fill="url(#caseBody)"/>
+    <path d="M188 397c0-42 34-75 76-75h458c42 0 76 33 76 75v78L548 622c-34 20-76 20-110 0L188 475z" fill="url(#caseTop)"/>
+
+    <!-- Check -->
+    <path d="M398 486c-19-19-19-50 0-69 19-19 50-19 69 0l54 54 113-113c19-19 50-19 69 0 19 19 19 50 0 69L556 574c-19 19-50 19-69 0z" fill="url(#check)" filter="url(#glow)"/>
+
+    <!-- Magnifier -->
+    <circle cx="702" cy="648" r="132" fill="url(#orange)"/>
+    <circle cx="702" cy="648" r="86" fill="#08265f"/>
+    <path d="M782 752l118 118c20 20 20 52 0 72l-4 4c-20 20-52 20-72 0L706 828z" fill="url(#orange)"/>
+    <path d="M655 595c14-22 36-36 62-41" fill="none" stroke="#b8e7ff" stroke-width="19" stroke-linecap="round" opacity=".88"/>
+
+    <!-- Search accent rays -->
+    <path d="M845 528l41-47M879 585l62-17" fill="none" stroke="#ffac0b" stroke-width="22" stroke-linecap="round" filter="url(#glow)"/>
+  </g>
+</svg>
