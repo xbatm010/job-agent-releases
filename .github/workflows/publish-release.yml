@@ -473,7 +473,69 @@ jobs:
               "Data Analyst jobs in Praha",
               main.BROWSER_DISCOVERY_RELOAD_LIMIT,
           ).startswith("reload loop")
-          print("Indeed CAPTCHA/reload-loop stop smoke test: OK")
+
+          class _FakeBody:
+              def __init__(self, page):
+                  self.page = page
+
+              @property
+              def first(self):
+                  return self
+
+              async def count(self):
+                  return 1
+
+              async def inner_text(self, *args, **kwargs):
+                  return self.page.visible_text()
+
+          class _FakeChallengePage:
+              def __init__(self):
+                  self.url = "https://cz.indeed.com/jobs?q=Data+Analyst"
+                  self.polls = 0
+
+              async def wait_for_timeout(self, ms):
+                  self.polls += 1
+
+              async def content(self):
+                  if self.polls < 2:
+                      return (
+                          "<html><title>Additional Verification Required</title>"
+                          "<body>Please verify you are human</body></html>"
+                      )
+                  return (
+                      "<html><title>Indeed Jobs</title>"
+                      "<body>Junior Data Analyst Praha</body></html>"
+                  )
+
+              def visible_text(self):
+                  if self.polls < 2:
+                      return "Please verify you are human"
+                  return "Junior Data Analyst Praha"
+
+              def locator(self, selector):
+                  assert selector == "body"
+                  return _FakeBody(self)
+
+          old_wait = main.INDEED_MANUAL_CHALLENGE_WAIT_SECONDS
+          old_poll = main.INDEED_MANUAL_CHALLENGE_POLL_MS
+          main.INDEED_MANUAL_CHALLENGE_WAIT_SECONDS = 2
+          main.INDEED_MANUAL_CHALLENGE_POLL_MS = 250
+          try:
+              verified, verified_html, _ = main.asyncio.run(
+                  main.wait_for_manual_access_challenge(
+                      _FakeChallengePage(),
+                      "Indeed.cz",
+                      "Data Analyst",
+                      "https://cz.indeed.com/jobs?q=Data+Analyst",
+                  )
+              )
+          finally:
+              main.INDEED_MANUAL_CHALLENGE_WAIT_SECONDS = old_wait
+              main.INDEED_MANUAL_CHALLENGE_POLL_MS = old_poll
+
+          assert verified is True
+          assert "Junior Data Analyst" in verified_html
+          print("Indeed manual CAPTCHA pause/resume smoke test: OK")
 
           entry_job = {
               "source": "jobs.cz",
