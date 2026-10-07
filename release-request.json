@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 23,
   "version": "2.7.8",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Desktop 2.7.8 fixes the TargetClosedError seen during manual Indeed verification. The browser fallback now detects when Indeed replaces/closes the CAPTCHA tab, recovers a live replacement tab from the same persistent BrowserContext, preserves the verified session, and continues discovery. Before each Indeed query the agent verifies that the current page is still alive. If the Chromium window/session was actually closed, Indeed stops immediately with one clear message instead of repeating TargetClosedError for every search query. A regression smoke test now reproduces CAPTCHA verification with replacement-tab recovery. CAPTCHA remains fully manual; the agent does not solve or interact with it. All v2.7.7 scoring, CV handling, duplicate protection and manual final Submit safety remain unchanged.",
-  "last_published": "2.7.7",
-  "last_sha256": "b66ae241f4e7bb14fbb651c5e8c3b4f37f9536f41a5781ab52e371d91e875c27"
+  "last_published": "2.7.8",
+  "last_sha256": "8b46efc296da425a47399c105dbb17fdb18cb2eabe7889c7d7f838267950473a"
 }
