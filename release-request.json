@@ -1,12 +1,10 @@
 {
-  "publish": false,
-  "request_id": 13,
-  "version": "2.6.0",
+  "publish": true,
+  "request_id": 14,
+  "version": "2.6.1",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.6.0 introduces the new Job Agent visual identity: a dark-navy app icon with a blue briefcase, teal checkmark and orange search magnifier. The icon is now used by the macOS .app/Dock and inside the Desktop header and Updates screen. GitHub Actions renders the bundled SVG into PNG and ICNS assets during release builds. Responsive layout, duplicate-application protection and manual final Submit safety remain unchanged.",
-  "last_published": "2.6.0",
-  "last_sha256": "f1050112d4e3042261a8a977cd9cfb1fd45cf67774966062710784f356257a0b"
+  "notes": "Desktop 2.6.1 fixes clipped and overlapping text in the narrow left settings panel. Search/Profile/Scoring forms now wrap long rows adaptively, Search checkbox labels are shorter while preserving full explanations in tooltips, and the window width remains compact. Branding from 2.6.0, duplicate-application protection, and manual final Submit safety remain unchanged."
 }
