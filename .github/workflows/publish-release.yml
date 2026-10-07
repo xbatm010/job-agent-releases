@@ -228,16 +228,16 @@ jobs:
           assert "Chromium for weak jobs" in desktop
           assert "Czech Průvodní dopis" in desktop
           assert "source_startupjobs" in desktop
-          assert "source_indeed" in desktop
           assert "StartupJobs.cz" in desktop
-          assert "Indeed.cz" in desktop
+          assert "source_indeed" not in desktop
+          assert "Indeed.cz" not in desktop
           assert "discovery-only" in desktop
           assert 'APP_CHANNEL = str(VERSION_INFO.get("channel", "stable"))' in desktop
           assert '"update_channel": APP_CHANNEL' in desktop
           assert '"update_channel_explicit": False' in desktop
           assert "def _persist_update_channel" in desktop
           assert "currentTextChanged.connect" in desktop
-          print("Four-source Desktop controls smoke test: OK")
+          print("Three-source Desktop controls smoke test: OK")
           print("Beta update-channel migration smoke test: OK")
           print("Narrow settings layout smoke test: OK")
           print("Responsive Desktop layout smoke test: OK")
@@ -393,39 +393,7 @@ jobs:
           assert "Praha" in startup[0]["location"]
           assert not main.application_source_supported(startup[0])
 
-          indeed_html = """
-          <div class="job_seen_beacon">
-            <h2 class="jobTitle">
-              <a class="jcs-JobTitle" data-jk="abc123def456" href="/rc/clk?jk=abc123def456">
-                <span title="Junior Data Analyst">Junior Data Analyst</span>
-              </a>
-            </h2>
-            <span data-testid="company-name">Example Analytics</span>
-            <div data-testid="text-location">Praha</div>
-          </div>
-          """
-          indeed = main.parse_indeed_search(indeed_html, "Junior Data Analyst")
-          assert len(indeed) == 1
-          assert indeed[0]["source"] == "indeed.cz"
-          assert indeed[0]["job_id"] == "abc123def456"
-          assert indeed[0]["company"] == "Example Analytics"
-          assert indeed[0]["location"] == "Praha"
-          assert "viewjob?jk=abc123def456" in indeed[0]["url"]
-          assert not main.application_source_supported(indeed[0])
-
-          discovery_review = dict(safe, source="indeed.cz")
-          assert not main.manual_review_apply_eligible(discovery_review, True)
-          assert "switching to normal Chromium discovery" in Path(
-              "buildsrc/main.py"
-          ).read_text(encoding="utf-8")
-          assert "persistent=True" in Path(
-              "buildsrc/main.py"
-          ).read_text(encoding="utf-8")
-          assert "headless=False" in Path(
-              "buildsrc/main.py"
-          ).read_text(encoding="utf-8")
           assert startup[0]["title"] == "Data Analyst (CRM & Campaigns)"
-          print("Indeed browser fallback regression smoke test: OK")
 
           glued_title, glued_company = main.split_startupjobs_heading(
               "Future Journey Agency Data Analyst (CRM & Campaigns) "
@@ -434,168 +402,14 @@ jobs:
           assert glued_title == "Data Analyst (CRM & Campaigns)"
           assert glued_company == "Future Journey Agency"
 
-          duplicate_indeed = [
-              dict(indeed[0], job_id="one"),
-              dict(indeed[0], job_id="two"),
-          ]
-          deduped_indeed = main.dedupe_indeed_discovery(duplicate_indeed)
-          assert len(deduped_indeed) == 1
-          print("Early Indeed semantic dedupe smoke test: OK")
-
-          protected = {
-              "source": "indeed.cz",
-              "job_id": "protected",
-              "title": "Data Analyst Intern - Technology Consulting",
-              "actual_title": "Data Analyst Intern - Technology Consulting",
-              "company": "PwC",
-              "location": "Praha",
-              "description": "Original search-card evidence",
-              "evidence_quality": "weak",
-              "evidence_length": len("Original search-card evidence"),
-              "evidence_source": "http",
-          }
-          main.merge_browser_evidence(
-              protected,
-              "<html><head><title>Access Denied</title></head>"
-              "<body><h1>Access Denied</h1></body></html>",
-              "Access Denied",
-              current_url="https://cz.indeed.com/viewjob?jk=protected",
-          )
-          assert protected["actual_title"] == (
-              "Data Analyst Intern - Technology Consulting"
-          )
-          assert protected["company"] == "PwC"
-          assert protected["description"] == "Original search-card evidence"
-          assert protected["evidence_source"] == "http"
-          assert protected["browser_challenge_detected"] is True
-
-          assert main.browser_discovery_block_reason(
-              "<html><title>Additional Verification Required</title></html>",
-              "Please verify your identity",
-              1,
-          ) == "CAPTCHA/security challenge"
-          assert main.browser_discovery_block_reason(
-              "<html><title>Indeed Jobs</title></html>",
-              "Data Analyst jobs in Praha",
-              main.BROWSER_DISCOVERY_RELOAD_LIMIT,
-          ).startswith("reload loop")
-
-          class _FakeBody:
-              def __init__(self, page):
-                  self.page = page
-
-              @property
-              def first(self):
-                  return self
-
-              async def count(self):
-                  return 1
-
-              async def inner_text(self, *args, **kwargs):
-                  return self.page.visible_text()
-
-          class _FakeChallengePage:
-              def __init__(self, context=None, replacement=None):
-                  self.url = "https://cz.indeed.com/jobs?q=Data+Analyst"
-                  self.polls = 0
-                  self.closed = False
-                  self.context = context
-                  self.replacement = replacement
-
-              def is_closed(self):
-                  return self.closed
-
-              async def wait_for_timeout(self, ms):
-                  self.polls += 1
-                  if (
-                      self.context is not None
-                      and self.replacement is not None
-                      and self.polls == 1
-                  ):
-                      self.closed = True
-                      self.context.pages.append(self.replacement)
-
-              async def content(self):
-                  if self.closed:
-                      raise RuntimeError("Target page has been closed")
-                  if self.polls < 2:
-                      return (
-                          "<html><title>Additional Verification Required</title>"
-                          "<body>Please verify you are human</body></html>"
-                      )
-                  return (
-                      "<html><title>Indeed Jobs</title>"
-                      "<body>Junior Data Analyst Praha</body></html>"
-                  )
-
-              def visible_text(self):
-                  if self.polls < 2:
-                      return "Please verify you are human"
-                  return "Junior Data Analyst Praha"
-
-              def locator(self, selector):
-                  assert selector == "body"
-                  return _FakeBody(self)
-
-          class _FakeVerifiedPage(_FakeChallengePage):
-              def __init__(self):
-                  super().__init__()
-                  self.polls = 2
-
-          class _FakeContext:
-              def __init__(self):
-                  self.pages = []
-
-              async def wait_for_event(self, name, timeout=None):
-                  raise RuntimeError("no new page")
-
-          old_wait = main.INDEED_MANUAL_CHALLENGE_WAIT_SECONDS
-          old_poll = main.INDEED_MANUAL_CHALLENGE_POLL_MS
-          main.INDEED_MANUAL_CHALLENGE_WAIT_SECONDS = 2
-          main.INDEED_MANUAL_CHALLENGE_POLL_MS = 250
-          try:
-              context = _FakeContext()
-              page = _FakeChallengePage()
-              context.pages.append(page)
-              verified, verified_html, _, verified_page = main.asyncio.run(
-                  main.wait_for_manual_access_challenge(
-                      page,
-                      context,
-                      "Indeed.cz",
-                      "Data Analyst",
-                      "https://cz.indeed.com/jobs?q=Data+Analyst",
-                  )
-              )
-              assert verified is True
-              assert verified_page is page
-              assert "Junior Data Analyst" in verified_html
-
-              replacement = _FakeVerifiedPage()
-              replacement_context = _FakeContext()
-              original = _FakeChallengePage(
-                  replacement_context,
-                  replacement,
-              )
-              replacement_context.pages.append(original)
-              replaced, replaced_html, _, live_page = main.asyncio.run(
-                  main.wait_for_manual_access_challenge(
-                      original,
-                      replacement_context,
-                      "Indeed.cz",
-                      "Data Analyst",
-                      "https://cz.indeed.com/jobs?q=Data+Analyst",
-                  )
-              )
-          finally:
-              main.INDEED_MANUAL_CHALLENGE_WAIT_SECONDS = old_wait
-              main.INDEED_MANUAL_CHALLENGE_POLL_MS = old_poll
-
-          assert replaced is True
-          assert live_page is replacement
-          assert "Junior Data Analyst" in replaced_html
-          assert main.browser_page_is_live(replacement)
-          assert not main.browser_page_is_live(original)
-          print("Indeed manual CAPTCHA + replacement-tab smoke test: OK")
+          runtime_source = Path("buildsrc/main.py").read_text(encoding="utf-8")
+          desktop_source = Path("buildsrc/desktop.py").read_text(encoding="utf-8")
+          env_source = Path("buildsrc/.env.example").read_text(encoding="utf-8")
+          assert "indeed" not in runtime_source.lower()
+          assert "indeed" not in desktop_source.lower()
+          assert "indeed" not in env_source.lower()
+          assert "three-source data-role discovery" in runtime_source
+          print("Indeed removal + three-source discovery smoke test: OK")
 
           entry_job = {
               "source": "jobs.cz",
@@ -633,9 +447,7 @@ jobs:
           assert ai_score["decision"] in {"APPLY", "REVIEW"}
           print("v2.7.3 entry-role scoring smoke test: OK")
 
-          print("Indeed challenge-page protection smoke test: OK")
-
-          print("StartupJobs + Indeed discovery smoke test: OK")
+          print("StartupJobs discovery smoke test: OK")
 
           print("Dashboard persistence + manual queue safety smoke test: OK")
           PY
