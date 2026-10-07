@@ -63,7 +63,7 @@ BROWSER_EVIDENCE_RECOVERY = os.getenv(
     "BROWSER_EVIDENCE_RECOVERY", "true"
 ).lower() == "true"
 MAX_BROWSER_EVIDENCE_JOBS = int(os.getenv(
-    "MAX_BROWSER_EVIDENCE_JOBS", "8"
+    "MAX_BROWSER_EVIDENCE_JOBS", "12"
 ))
 BROWSER_EVIDENCE_WAIT_MS = int(os.getenv(
     "BROWSER_EVIDENCE_WAIT_MS", "1800"
@@ -100,13 +100,13 @@ ALLOW_SAME_HOST_REPLY_FALLBACK = os.getenv(
 MIN_REVIEW_SCORE = int(os.getenv("MIN_REVIEW_SCORE", "55"))
 MANUAL_REVIEW_APPLY_MIN_SCORE = int(os.getenv("MANUAL_REVIEW_APPLY_MIN_SCORE", "65"))
 MAX_DISCOVERY_ITEMS = int(os.getenv("MAX_DISCOVERY_ITEMS", "30"))
-MAX_JOBS_TO_REVIEW = int(os.getenv("MAX_JOBS_TO_REVIEW", "10"))
+MAX_JOBS_TO_REVIEW = int(os.getenv("MAX_JOBS_TO_REVIEW", "36"))
 CV_PATH = os.getenv("CV_PATH", "").strip()
 BROWSER_PROFILE_DIR = os.getenv("BROWSER_PROFILE_DIR", "./browser_profile")
 SOURCE_JOBS_CZ = os.getenv("SOURCE_JOBS_CZ", "true").lower() == "true"
 SOURCE_PRACE_CZ = os.getenv("SOURCE_PRACE_CZ", "true").lower() == "true"
 SOURCE_STARTUPJOBS_CZ = os.getenv("SOURCE_STARTUPJOBS_CZ", "true").lower() == "true"
-MAX_DISCOVERY_PER_SOURCE = int(os.getenv("MAX_DISCOVERY_PER_SOURCE", "60"))
+MAX_DISCOVERY_PER_SOURCE = int(os.getenv("MAX_DISCOVERY_PER_SOURCE", "80"))
 LOCATION_MODE = os.getenv("LOCATION_MODE", "prague").strip().lower()
 ALLOWED_LOCATION_TERMS = [x.strip() for x in os.getenv(
     "ALLOWED_LOCATION_TERMS",
