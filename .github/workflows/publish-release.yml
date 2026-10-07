@@ -229,9 +229,11 @@ jobs:
           assert "Czech Průvodní dopis" in desktop
           assert "source_startupjobs" in desktop
           assert "StartupJobs.cz" in desktop
-          assert "source_indeed" not in desktop
-          assert "Indeed.cz" not in desktop
+          assert "self.indeed_check" not in desktop
+          assert 'QCheckBox("Indeed.cz")' not in desktop
           assert "discovery-only" in desktop
+          assert "3 sources" in desktop
+          assert 'saved.pop("source_indeed", None)' in desktop
           assert 'APP_CHANNEL = str(VERSION_INFO.get("channel", "stable"))' in desktop
           assert '"update_channel": APP_CHANNEL' in desktop
           assert '"update_channel_explicit": False' in desktop
@@ -406,10 +408,13 @@ jobs:
           desktop_source = Path("buildsrc/desktop.py").read_text(encoding="utf-8")
           env_source = Path("buildsrc/.env.example").read_text(encoding="utf-8")
           assert "indeed" not in runtime_source.lower()
-          assert "indeed" not in desktop_source.lower()
           assert "indeed" not in env_source.lower()
+          assert "SOURCE_INDEED_CZ" not in desktop_source
+          assert "self.indeed_check" not in desktop_source
+          assert 'QCheckBox("Indeed.cz")' not in desktop_source
+          assert '"indeed.com" in url' in desktop_source
           assert "three-source data-role discovery" in runtime_source
-          print("Indeed removal + three-source discovery smoke test: OK")
+          print("Retired Indeed cleanup + three-source discovery smoke test: OK")
 
           entry_job = {
               "source": "jobs.cz",
@@ -543,13 +548,19 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v$VERSION"
+          PRERELEASE_ARGS=()
+          if [ "$CHANNEL" = "beta" ]; then
+            PRERELEASE_ARGS+=(--prerelease)
+          fi
+
           if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber --repo "${GITHUB_REPOSITORY}"
           else
             gh release create "$TAG" "$ZIP" \
               --repo "${GITHUB_REPOSITORY}" \
               --title "Job Agent Desktop $VERSION" \
-              --notes-file release-notes.txt
+              --notes-file release-notes.txt \
+              "${PRERELEASE_ARGS[@]}"
           fi
 
       - name: Persist sanitized source and update manifest
