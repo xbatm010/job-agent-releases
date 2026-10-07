@@ -360,6 +360,49 @@ jobs:
           assert startup[0]["title"] == "Data Analyst (CRM & Campaigns)"
           print("Indeed browser fallback regression smoke test: OK")
 
+          glued_title, glued_company = main.split_startupjobs_heading(
+              "Future Journey Agency Data Analyst (CRM & Campaigns) "
+              "Hybrid Praha Full-time"
+          )
+          assert glued_title == "Data Analyst (CRM & Campaigns)"
+          assert glued_company == "Future Journey Agency"
+
+          duplicate_indeed = [
+              dict(indeed[0], job_id="one"),
+              dict(indeed[0], job_id="two"),
+          ]
+          deduped_indeed = main.dedupe_indeed_discovery(duplicate_indeed)
+          assert len(deduped_indeed) == 1
+          print("Early Indeed semantic dedupe smoke test: OK")
+
+          protected = {
+              "source": "indeed.cz",
+              "job_id": "protected",
+              "title": "Data Analyst Intern - Technology Consulting",
+              "actual_title": "Data Analyst Intern - Technology Consulting",
+              "company": "PwC",
+              "location": "Praha",
+              "description": "Original search-card evidence",
+              "evidence_quality": "weak",
+              "evidence_length": len("Original search-card evidence"),
+              "evidence_source": "http",
+          }
+          main.merge_browser_evidence(
+              protected,
+              "<html><head><title>Access Denied</title></head>"
+              "<body><h1>Access Denied</h1></body></html>",
+              "Access Denied",
+              current_url="https://cz.indeed.com/viewjob?jk=protected",
+          )
+          assert protected["actual_title"] == (
+              "Data Analyst Intern - Technology Consulting"
+          )
+          assert protected["company"] == "PwC"
+          assert protected["description"] == "Original search-card evidence"
+          assert protected["evidence_source"] == "http"
+          assert protected["browser_challenge_detected"] is True
+          print("Indeed challenge-page protection smoke test: OK")
+
           print("StartupJobs + Indeed discovery smoke test: OK")
 
           print("Dashboard persistence + manual queue safety smoke test: OK")
