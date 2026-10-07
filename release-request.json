@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 19,
-  "version": "2.7.4",
+  "publish": true,
+  "request_id": 20,
+  "version": "2.7.5",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.7.4 hotfix fixes a Jobs.cz application-preparation crash caused by h1_text being referenced before initialization during browser company extraction. h1_text is now resolved before metadata/title parsing, so APPLY candidates can continue into company extraction and form preparation. A regression smoke test reproduces the metadata path that crashed in 2.7.3. The v2.7.3 scoring, Indeed CAPTCHA/reload-loop handling, discovery rules, manual final Submit safety and thresholds are unchanged.",
+  "notes": "Desktop 2.7.5 is a small polish hotfix after successful 2.7.4 submissions. It rejects metadata slogan/teaser fragments such as '...kde jinde.' from company extraction so unknown employers remain unknown instead of being mislabeled, and replaces the legacy 'v51 will detect the confirmation automatically' log text with version-neutral wording. Scoring, source discovery, Indeed CAPTCHA handling, application preparation, manual final Submit safety and the v2.7.4 h1_text fix are unchanged.",
   "last_published": "2.7.4",
   "last_sha256": "3c02c185529a43a9d77820e85889f3a629973f2c5c9299fc11151d71b7010b8d"
 }
