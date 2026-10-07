@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.7.9",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.9/job-agent-2.7.9-macos.zip",
-      "sha256": "9abc2482583a8e66bbe4a01a42aed042e4bafc9d09d3a411edd364a1b9d923ba",
-      "notes": "Desktop 2.7.9 fixes beta update delivery. Beta builds now derive their default update channel from bundled version.json instead of always defaulting to stable. Existing beta users with the old implicit stable default are migrated to beta automatically, while an explicit user channel choice is preserved. Changing the update channel in the Updates tab is now persisted immediately. This release also retains the v2.7.8 Indeed replacement-tab recovery fix.",
+      "version": "2.8.0",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.8.0/job-agent-2.8.0-macos.zip",
+      "sha256": "4160ce5c8fc95731019bab8fa81dcaf585134b139c72dce97c3f02f6716132eb",
+      "notes": "Desktop 2.8.0 removes Indeed completely from Job Agent automation. Discovery now uses only Jobs.cz, Prace.cz and StartupJobs.cz. All Indeed HTTP/Chromium discovery, CAPTCHA/manual-verification logic, source settings, Desktop checkbox/filter entries and Indeed-specific environment variables have been removed. StartupJobs remains discovery-only; Jobs.cz and Prace.cz retain supported application preparation. A release regression check now asserts that Indeed does not reappear in runtime, Desktop or .env. The v2.7.9 beta update-channel fix and all existing scoring, duplicate protection, CV handling and manual final Submit safety remain unchanged.",
       "min_version": "2.3.1"
     }
   }
