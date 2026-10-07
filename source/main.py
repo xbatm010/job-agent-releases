@@ -71,12 +71,6 @@ BROWSER_EVIDENCE_WAIT_MS = int(os.getenv(
 BROWSER_DISCOVERY_RELOAD_LIMIT = int(os.getenv(
     "BROWSER_DISCOVERY_RELOAD_LIMIT", "5"
 ))
-INDEED_MANUAL_CHALLENGE_WAIT_SECONDS = int(os.getenv(
-    "INDEED_MANUAL_CHALLENGE_WAIT_SECONDS", "300"
-))
-INDEED_MANUAL_CHALLENGE_POLL_MS = int(os.getenv(
-    "INDEED_MANUAL_CHALLENGE_POLL_MS", "1000"
-))
 BROWSER_EVIDENCE_LEVELS = {
     x.strip().lower() for x in os.getenv(
         "BROWSER_EVIDENCE_LEVELS", "weak"
@@ -112,7 +106,6 @@ BROWSER_PROFILE_DIR = os.getenv("BROWSER_PROFILE_DIR", "./browser_profile")
 SOURCE_JOBS_CZ = os.getenv("SOURCE_JOBS_CZ", "true").lower() == "true"
 SOURCE_PRACE_CZ = os.getenv("SOURCE_PRACE_CZ", "true").lower() == "true"
 SOURCE_STARTUPJOBS_CZ = os.getenv("SOURCE_STARTUPJOBS_CZ", "true").lower() == "true"
-SOURCE_INDEED_CZ = os.getenv("SOURCE_INDEED_CZ", "true").lower() == "true"
 MAX_DISCOVERY_PER_SOURCE = int(os.getenv("MAX_DISCOVERY_PER_SOURCE", "60"))
 LOCATION_MODE = os.getenv("LOCATION_MODE", "prague").strip().lower()
 ALLOWED_LOCATION_TERMS = [x.strip() for x in os.getenv(
@@ -130,10 +123,9 @@ BLOCKED_LOCATION_TERMS = [x.strip() for x in os.getenv(
 BASE = "https://www.jobs.cz"
 PRACE_BASE = "https://www.prace.cz"
 STARTUPJOBS_BASE = "https://www.startupjobs.cz"
-INDEED_BASE = "https://cz.indeed.com"
 
-# StartupJobs/Indeed are discovery-only in v2.7.0. They can be scored,
-# reviewed and opened from Dashboard, but cannot enter the application queue.
+# StartupJobs is discovery-only. It can be scored, reviewed and opened from
+# Dashboard, but cannot enter the automated application queue.
 APPLICATION_SUPPORTED_SOURCES = {"jobs.cz", "prace.cz"}
 
 STARTUPJOBS_SEARCH_ROUTES = [
@@ -141,19 +133,6 @@ STARTUPJOBS_SEARCH_ROUTES = [
         "Data analytik",
         "/nabidky/data-analytik?lokalita=Praha%3AChIJi3lwCZyTC0cRkEAWZg-vAAQ%3A20km",
     ),
-]
-
-INDEED_SEARCH_QUERIES = [
-    "Data Analyst",
-    "Junior Data Analyst",
-    "BI Analyst",
-    "Reporting Analyst",
-    "Business Data Analyst",
-    "Data Specialist",
-    "Data Analytics Internship",
-    "Analytics Intern",
-    "AI Trainee",
-    "Automation Trainee",
 ]
 
 PRACE_SEARCH_ROUTES = [
@@ -304,8 +283,6 @@ def source_from_url(url):
     low = (url or "").lower()
     if "startupjobs.cz" in low:
         return "startupjobs.cz"
-    if "indeed.com" in low:
-        return "indeed.cz"
     if "prace.cz" in low:
         return "prace.cz"
     if "jobs.cz" in low:
@@ -326,18 +303,6 @@ def startupjobs_job_id_from_url(url):
     return m.group(1) if m else None
 
 
-def indeed_job_id_from_url(url):
-    parsed = urlparse(url or "")
-    qs = parse_qs(parsed.query)
-    for key in ("jk", "vjk"):
-        value = (qs.get(key) or [""])[0].strip()
-        if value:
-            return value
-
-    m = re.search(r"[?&](?:jk|vjk)=([A-Za-z0-9_-]+)", url or "", re.I)
-    return m.group(1) if m else None
-
-
 def stable_external_id(url):
     digest = hashlib.sha1((url or "").encode("utf-8")).hexdigest()[:16]
     return f"ext-{digest}"
@@ -353,9 +318,6 @@ def source_job_id(url):
         return jid or stable_external_id(url)
     if source == "startupjobs.cz":
         jid = startupjobs_job_id_from_url(url)
-        return jid or stable_external_id(url)
-    if source == "indeed.cz":
-        jid = indeed_job_id_from_url(url)
         return jid or stable_external_id(url)
     return stable_external_id(url)
 
@@ -1733,126 +1695,6 @@ def parse_startupjobs_search(html, query):
     return jobs
 
 
-def parse_indeed_search(html, query):
-    soup = BeautifulSoup(html, "html.parser")
-    jobs, seen = [], set()
-
-    selectors = [
-        "h2.jobTitle a[href]",
-        "a.jcs-JobTitle[href]",
-        "a[data-jk][href]",
-        'a[href*="/rc/clk"][href*="jk="]',
-        'a[href*="/viewjob"][href*="jk="]',
-        'a[href*="/pagead/clk"][href*="jk="]',
-    ]
-    anchors = []
-    for sel in selectors:
-        anchors.extend(soup.select(sel))
-
-    for a in anchors:
-        raw_href = a.get("href", "")
-        data_jk = clean(a.get("data-jk", ""))
-        href = urljoin(INDEED_BASE, raw_href)
-        jid = data_jk or indeed_job_id_from_url(href)
-        if not jid or jid in seen:
-            continue
-
-        # Use a stable Indeed detail URL instead of the transient rc/clk link.
-        detail_url = f"{INDEED_BASE}/viewjob?jk={quote(jid)}"
-
-        title = clean(a.get_text(" ", strip=True))
-        title_span = a.select_one("span[title]")
-        if title_span and title_span.get("title"):
-            title = clean(title_span.get("title"))
-        if not title:
-            continue
-
-        card = (
-            a.find_parent("div", class_=re.compile(r"job_seen_beacon", re.I))
-            or a.find_parent("div", class_=re.compile(r"cardOutline", re.I))
-            or _card_for_anchor(a)
-        )
-        card_text = clean(card.get_text(" ", strip=True) if card else "")
-
-        company = ""
-        location = ""
-        if card:
-            for sel in [
-                '[data-testid="company-name"]',
-                ".companyName",
-                '[class*="companyName"]',
-            ]:
-                el = card.select_one(sel)
-                if el:
-                    candidate = clean(el.get_text(" ", strip=True))
-                    if valid_company(candidate, "search_card"):
-                        company = candidate
-                        break
-            for sel in [
-                '[data-testid="text-location"]',
-                ".companyLocation",
-                '[class*="companyLocation"]',
-            ]:
-                el = card.select_one(sel)
-                if el:
-                    location = clean(el.get_text(" ", strip=True))
-                    if location:
-                        break
-
-        seen.add(jid)
-        jobs.append({
-            "source": "indeed.cz",
-            "job_id": jid,
-            "title": title,
-            "actual_title": title,
-            "url": detail_url,
-            "company": company,
-            "company_source": "search_card" if company else "",
-            "location": location,
-            "description": "",
-            "card_text": card_text,
-            "search_query": query,
-            "discovery_only": True,
-        })
-    return jobs
-
-
-def dedupe_indeed_discovery(jobs):
-    """
-    Indeed can surface the same vacancy under multiple jk values across
-    different search queries. Deduplicate before enrichment/browser evidence
-    using the stable job id first and then title+company+location.
-    """
-    out = []
-    seen_ids = set()
-    seen_semantic = set()
-
-    for job in jobs:
-        jid = clean(str(job.get("job_id", "") or "")).lower()
-        if jid and jid in seen_ids:
-            continue
-
-        title = normalize_key_text(
-            job.get("actual_title") or job.get("title", "")
-        )
-        company = normalize_key_text(job.get("company", ""))
-        location = normalize_key_text(job.get("location", ""))
-
-        semantic = ""
-        if title and company:
-            semantic = f"{title}|{company}|{location}"
-            if semantic in seen_semantic:
-                continue
-
-        if jid:
-            seen_ids.add(jid)
-        if semantic:
-            seen_semantic.add(semantic)
-        out.append(job)
-
-    return out
-
-
 def discovery_headers():
     return {
         "User-Agent": (
@@ -1888,231 +1730,15 @@ def discover_startupjobs_cz(session):
     return jobs[:MAX_DISCOVERY_PER_SOURCE]
 
 
-def discover_indeed_cz(session):
-    if not SOURCE_INDEED_CZ:
-        return []
-
-    jobs, seen = [], set()
-    for query in INDEED_SEARCH_QUERIES:
-        params = urlencode({
-            "q": query,
-            "l": "Praha",
-            "radius": "25",
-            "sort": "date",
-        })
-        url = f"{INDEED_BASE}/jobs?{params}"
-        try:
-            r = session.get(url, timeout=20, headers=discovery_headers())
-            if r.status_code == 403:
-                print(
-                    "⚠️ Indeed.cz blocked direct HTTP discovery (403); "
-                    "switching to normal Chromium discovery."
-                )
-                break
-            r.raise_for_status()
-            for job in parse_indeed_search(r.text, query):
-                key = history_key(job)
-                if key in seen:
-                    continue
-                seen.add(key)
-                jobs.append(job)
-        except requests.HTTPError as exc:
-            print(
-                f"⚠️ Indeed.cz HTTP discovery unavailable: "
-                f"{getattr(exc.response, 'status_code', 'HTTP error')}"
-            )
-            break
-        except Exception as exc:
-            print(
-                f"⚠️ Indeed.cz search failed for '{query}': "
-                f"{type(exc).__name__}: {exc}"
-            )
-
-    jobs.sort(key=discovery_priority, reverse=True)
-    return jobs[:MAX_DISCOVERY_PER_SOURCE]
-
-
-def browser_page_is_live(page):
-    if page is None:
-        return False
-    try:
-        return not page.is_closed()
-    except Exception:
-        return False
-
-
-async def recover_live_browser_page(context, preferred=None, wait_ms=1200):
-    """
-    Return an open page from the existing browser context.
-
-    Some verification flows replace the current target/tab. Reusing another
-    page from the same persistent context preserves the user's verified session
-    without relaunching the browser or interacting with the challenge.
-    """
-    if browser_page_is_live(preferred):
-        return preferred
-
-    try:
-        for candidate in reversed(context.pages):
-            if browser_page_is_live(candidate):
-                return candidate
-    except Exception:
-        return None
-
-    if wait_ms > 0:
-        try:
-            candidate = await context.wait_for_event("page", timeout=wait_ms)
-            if browser_page_is_live(candidate):
-                return candidate
-        except Exception:
-            pass
-
-    return None
-
-
-async def wait_for_manual_access_challenge(
-    page,
-    context,
-    source_name,
-    query,
-    target_url,
-):
-    """
-    Pause on a visible anti-bot challenge and let the user solve it manually.
-
-    The agent never clicks, fills or otherwise interacts with the challenge.
-    Once the challenge disappears, the verified persistent browser session is
-    reused. If Indeed replaces the challenge tab, the agent follows the new
-    live page in the same context.
-    """
-    if not source_name.lower().startswith("indeed"):
-        return False, "", "", page
-
-    wait_seconds = max(1, INDEED_MANUAL_CHALLENGE_WAIT_SECONDS)
-    poll_ms = max(250, INDEED_MANUAL_CHALLENGE_POLL_MS)
-
-    print(
-        f"🧑‍💻 {source_name}: manual verification required for '{query}'."
-    )
-    print(
-        "   Complete the CAPTCHA/security check yourself in the open Chromium "
-        "window. Job Agent will not click or solve it."
-    )
-    print(
-        f"   Waiting up to {wait_seconds} seconds; discovery will resume "
-        "automatically after verification."
-    )
-
-    elapsed_ms = 0
-    while elapsed_ms < wait_seconds * 1000:
-        live_page = await recover_live_browser_page(
-            context,
-            page,
-            wait_ms=min(poll_ms, 1200),
-        )
-        if live_page is None:
-            print(
-                f"⚠️ {source_name}: Chromium window/session was closed during "
-                "manual verification; skipping Indeed for this run."
-            )
-            return False, "", "", None
-
-        if live_page is not page:
-            page = live_page
-            print(
-                f"🔄 {source_name}: verification replaced the browser tab; "
-                "continuing with the new tab."
-            )
-
-        try:
-            await page.wait_for_timeout(poll_ms)
-        except Exception:
-            page = await recover_live_browser_page(context, None, wait_ms=1200)
-            if page is None:
-                print(
-                    f"⚠️ {source_name}: Chromium window/session was closed during "
-                    "manual verification; skipping Indeed for this run."
-                )
-                return False, "", "", None
-            continue
-
-        elapsed_ms += poll_ms
-
-        try:
-            html = await page.content()
-        except Exception:
-            page = await recover_live_browser_page(context, None, wait_ms=1200)
-            if page is None:
-                return False, "", "", None
-            continue
-
-        visible = ""
-        try:
-            body = page.locator("body").first
-            if await body.count():
-                visible = clean(await body.inner_text(timeout=1500))
-        except Exception:
-            pass
-
-        if is_access_challenge_page(html, visible):
-            continue
-
-        # Verification is gone. Indeed normally restores the requested search
-        # page automatically. If it lands elsewhere, revisit the original
-        # search URL once using the same verified persistent session.
-        current = page.url or ""
-        if "/jobs" not in current.lower():
-            try:
-                await page.goto(
-                    target_url,
-                    wait_until="domcontentloaded",
-                    timeout=30000,
-                )
-                await page.wait_for_timeout(1200)
-                html = await page.content()
-                visible = ""
-                try:
-                    body = page.locator("body").first
-                    if await body.count():
-                        visible = clean(await body.inner_text(timeout=1500))
-                except Exception:
-                    pass
-            except Exception:
-                replacement = await recover_live_browser_page(
-                    context, page, wait_ms=1200
-                )
-                if replacement is not None:
-                    page = replacement
-
-        if not is_access_challenge_page(html, visible):
-            print(
-                f"✅ {source_name}: manual verification completed; "
-                "resuming discovery."
-            )
-            return True, html, visible, page
-
-    print(
-        f"⌛ {source_name}: manual verification wait expired after "
-        f"{wait_seconds} seconds; skipping this source for the current run."
-    )
-    return False, "", "", page
-
-
 async def browser_discovery_fallback(
     specs,
     parser,
     source_name,
-    *,
-    persistent=False,
-    headless=True,
 ):
     """
-    Read-only fallback when a public search page returns no parsable jobs over
+    Read-only Chromium fallback for discovery pages that do not parse over
     plain HTTP. No application controls are clicked and no form fields are used.
-
-    Some public boards reject non-browser HTTP clients. For those boards we can
-    use the user's normal Job Agent Chromium profile without changing cookies,
-    accepting consent, or attempting to evade an access challenge.
+    Access challenges are treated as a hard stop for that source.
     """
     recovered, seen = [], set()
     if not specs:
@@ -2122,70 +1748,26 @@ async def browser_discovery_fallback(
     context = None
     try:
         async with async_playwright() as p:
-            if persistent:
-                context = await p.chromium.launch_persistent_context(
-                    str(resolve_browser_profile_dir()),
-                    headless=headless,
-                    viewport={"width": 1440, "height": 1000},
-                    locale="cs-CZ",
-                )
-                page = (
-                    context.pages[0]
-                    if context.pages
-                    else await context.new_page()
-                )
-            else:
-                browser = await p.chromium.launch(headless=headless)
-                context = await browser.new_context(
-                    viewport={"width": 1440, "height": 1000},
-                    locale="cs-CZ",
-                )
-                page = await context.new_page()
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                viewport={"width": 1440, "height": 1000},
+                locale="cs-CZ",
+            )
+            page = await context.new_page()
 
             navigation_events = 0
-            navigation_listener_pages = set()
 
-            def attach_navigation_listener(target_page):
+            def _record_main_navigation(frame):
                 nonlocal navigation_events
-                if target_page is None:
-                    return
-                key = id(target_page)
-                if key in navigation_listener_pages:
-                    return
-                navigation_listener_pages.add(key)
-
-                def _record_main_navigation(frame, tracked=target_page):
-                    nonlocal navigation_events
-                    try:
-                        if frame == tracked.main_frame:
-                            navigation_events += 1
-                    except Exception:
-                        pass
-
                 try:
-                    target_page.on("framenavigated", _record_main_navigation)
+                    if frame == page.main_frame:
+                        navigation_events += 1
                 except Exception:
                     pass
 
-            attach_navigation_listener(page)
+            page.on("framenavigated", _record_main_navigation)
 
             for query, url in specs:
-                live_page = await recover_live_browser_page(
-                    context, page, wait_ms=0
-                )
-                if live_page is None:
-                    print(
-                        f"⚠️ {source_name}: Chromium window/session is closed; "
-                        "stopping browser discovery for this source."
-                    )
-                    break
-                if live_page is not page:
-                    page = live_page
-                    attach_navigation_listener(page)
-                    print(
-                        f"🔄 {source_name}: switched to a replacement browser tab."
-                    )
-
                 nav_before = navigation_events
                 try:
                     await page.goto(
@@ -2211,41 +1793,11 @@ async def browser_discovery_fallback(
                         nav_delta,
                     )
                     if block_reason:
-                        if (
-                            block_reason == "CAPTCHA/security challenge"
-                            and source_name.lower().startswith("indeed")
-                            and persistent
-                            and not headless
-                        ):
-                            print(
-                                f"🛡️ {source_name} {block_reason} detected for "
-                                f"'{query}'."
-                            )
-                            verified, html_after, _, verified_page = (
-                                await wait_for_manual_access_challenge(
-                                    page,
-                                    context,
-                                    source_name,
-                                    query,
-                                    url,
-                                )
-                            )
-                            if not verified or verified_page is None:
-                                break
-                            if verified_page is not page:
-                                page = verified_page
-                                attach_navigation_listener(page)
-                            html = html_after
-                            # Reset the reload counter baseline after the user
-                            # completes verification; challenge navigation should
-                            # not be treated as an automated reload loop.
-                            nav_before = navigation_events
-                        else:
-                            print(
-                                f"🛡️ {source_name} {block_reason} detected for "
-                                f"'{query}'; skipping this source for the current run."
-                            )
-                            break
+                        print(
+                            f"🛡️ {source_name} {block_reason} detected for "
+                            f"'{query}'; skipping this source for the current run."
+                        )
+                        break
 
                     for job in parser(html, query):
                         key = history_key(job)
@@ -2254,126 +1806,6 @@ async def browser_discovery_fallback(
                         seen.add(key)
                         recovered.append(job)
                 except Exception as exc:
-                    message = str(exc).lower()
-
-                    # Some Indeed challenge redirects interrupt page.goto()
-                    # or replace the current page target. Recover another live
-                    # page from the same persistent context before deciding that
-                    # discovery has failed.
-                    if (
-                        source_name.lower().startswith("indeed")
-                        and persistent
-                        and not headless
-                    ):
-                        recovered_page = await recover_live_browser_page(
-                            context,
-                            page,
-                            wait_ms=1500,
-                        )
-                        if recovered_page is None:
-                            print(
-                                "⚠️ Indeed.cz Chromium window/session closed; "
-                                "stopping Indeed discovery for this run."
-                            )
-                            break
-
-                        if recovered_page is not page:
-                            page = recovered_page
-                            attach_navigation_listener(page)
-                            print(
-                                "🔄 Indeed.cz recovered a replacement browser "
-                                "tab after the previous target closed."
-                            )
-
-                        try:
-                            # If the replacement page is not already on the
-                            # current search, revisit the requested URL once.
-                            if "/jobs" not in (page.url or "").lower():
-                                await page.goto(
-                                    url,
-                                    wait_until="domcontentloaded",
-                                    timeout=30000,
-                                )
-                                await page.wait_for_timeout(1000)
-
-                            html = await page.content()
-                            visible = ""
-                            try:
-                                body = page.locator("body").first
-                                if await body.count():
-                                    visible = clean(
-                                        await body.inner_text(timeout=1500)
-                                    )
-                            except Exception:
-                                pass
-
-                            if is_access_challenge_page(html, visible):
-                                print(
-                                    f"🛡️ {source_name} CAPTCHA/security "
-                                    f"challenge detected for '{query}'."
-                                )
-                                verified, html_after, _, verified_page = (
-                                    await wait_for_manual_access_challenge(
-                                        page,
-                                        context,
-                                        source_name,
-                                        query,
-                                        url,
-                                    )
-                                )
-                                if verified and verified_page is not None:
-                                    if verified_page is not page:
-                                        page = verified_page
-                                        attach_navigation_listener(page)
-                                    for job in parser(html_after, query):
-                                        key = history_key(job)
-                                        if key in seen:
-                                            continue
-                                        seen.add(key)
-                                        recovered.append(job)
-                                    continue
-                                break
-
-                            # The page recovered without a challenge. Parse the
-                            # current search once and continue with the next
-                            # query instead of reporting the stale exception.
-                            parsed_any = False
-                            for job in parser(html, query):
-                                parsed_any = True
-                                key = history_key(job)
-                                if key in seen:
-                                    continue
-                                seen.add(key)
-                                recovered.append(job)
-                            if parsed_any:
-                                print(
-                                    f"✅ {source_name}: recovered '{query}' "
-                                    "after browser target replacement."
-                                )
-                                continue
-                        except Exception as recovery_exc:
-                            recovery_message = str(recovery_exc).lower()
-                            if (
-                                "closed" in recovery_message
-                                or type(recovery_exc).__name__.lower()
-                                == "targetclosederror"
-                            ):
-                                print(
-                                    "⚠️ Indeed.cz Chromium window/session closed; "
-                                    "stopping Indeed discovery for this run."
-                                )
-                                break
-
-                    if (
-                        source_name.lower().startswith("indeed")
-                        and ("navigat" in message or "execution context" in message)
-                    ):
-                        print(
-                            "🛡️ Indeed.cz navigation/reload loop detected "
-                            "without a visible CAPTCHA; skipping Indeed for "
-                            "the current run."
-                        )
-                        break
                     print(
                         f"⚠️ {source_name} browser discovery failed for "
                         f"'{query}': {type(exc).__name__}"
@@ -2381,9 +1813,8 @@ async def browser_discovery_fallback(
 
             await context.close()
             context = None
-            if browser is not None:
-                await browser.close()
-                browser = None
+            await browser.close()
+            browser = None
     except Exception as exc:
         print(
             f"⚠️ {source_name} browser discovery unavailable: "
@@ -2481,7 +1912,6 @@ async def discover_all(session):
     jobs_cz = discover_jobs_cz(session)
     prace_cz = discover_prace_cz(session)
     startupjobs_cz = discover_startupjobs_cz(session)
-    indeed_cz = discover_indeed_cz(session)
 
     if SOURCE_STARTUPJOBS_CZ and not startupjobs_cz:
         specs = [
@@ -2494,55 +1924,16 @@ async def discover_all(session):
             "StartupJobs.cz",
         )
 
-    if SOURCE_INDEED_CZ and not indeed_cz:
-        specs = []
-        for query in INDEED_SEARCH_QUERIES:
-            params = urlencode({
-                "q": query,
-                "l": "Praha",
-                "radius": "25",
-                "sort": "date",
-            })
-            specs.append((query, f"{INDEED_BASE}/jobs?{params}"))
-        print(
-            "🌐 Indeed.cz: opening read-only Chromium discovery. "
-            "A browser window may appear briefly."
-        )
-        indeed_cz = await browser_discovery_fallback(
-            specs,
-            parse_indeed_search,
-            "Indeed.cz",
-            persistent=True,
-            headless=False,
-        )
-        if not indeed_cz:
-            print(
-                "⚠️ Indeed.cz returned no parsable vacancies in normal "
-                "Chromium. The source will be skipped for this run."
-            )
-
-    indeed_before_dedupe = len(indeed_cz)
-    indeed_cz = dedupe_indeed_discovery(indeed_cz)
-    if indeed_before_dedupe != len(indeed_cz):
-        print(
-            f"🧹 Indeed.cz early dedupe: "
-            f"{indeed_before_dedupe} → {len(indeed_cz)}"
-        )
-
     print(f"🔎 Jobs.cz discovery: {len(jobs_cz)} candidate(s)")
     print(f"🔎 Prace.cz discovery: {len(prace_cz)} candidate(s)")
     print(f"🔎 StartupJobs.cz discovery: {len(startupjobs_cz)} candidate(s)")
-    print(f"🔎 Indeed.cz discovery: {len(indeed_cz)} candidate(s)")
 
     merged = interleave_sources(
         jobs_cz,
         prace_cz,
         startupjobs_cz,
-        indeed_cz,
     )
 
-    # Exact source/url duplicate guard. Semantic company/title dedupe happens
-    # after enrichment in main().
     out, seen = [], set()
     for job in merged:
         exact = history_key(job)
@@ -2552,6 +1943,7 @@ async def discover_all(session):
         out.append(job)
 
     return out
+
 
 def is_login_url(url):
     low = (url or "").lower()
@@ -7624,7 +7016,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.7.9 — four-source data-role discovery")
+    print("🚀 Starting Job Agent v2.8.0 — three-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
@@ -7659,10 +7051,6 @@ async def main():
         f"max={MAX_BROWSER_EVIDENCE_JOBS}"
     )
     print(
-        f"🧑‍💻 Indeed manual CAPTCHA wait: "
-        f"{INDEED_MANUAL_CHALLENGE_WAIT_SECONDS}s"
-    )
-    print(
         f"🛡️ Strict application CTA validation: "
         f"{STRICT_APPLICATION_ROUTE_VALIDATION}"
     )
@@ -7680,8 +7068,7 @@ async def main():
         "🌐 Sources: "
         f"Jobs.cz={SOURCE_JOBS_CZ} | "
         f"Prace.cz={SOURCE_PRACE_CZ} | "
-        f"StartupJobs.cz={SOURCE_STARTUPJOBS_CZ} | "
-        f"Indeed.cz={SOURCE_INDEED_CZ}"
+        f"StartupJobs.cz={SOURCE_STARTUPJOBS_CZ}"
     )
     print(
         f"📍 Location gate: mode={LOCATION_MODE} | "
