@@ -2322,6 +2322,14 @@ async def extract_company_from_page(page):
     if fp_name and valid_company(fp_name, "url_slug"):
         return fp_name, "fp_url_slug"
 
+    # Resolve the vacancy heading before metadata parsing. Metadata candidates
+    # compare against h1_text below, so it must always be initialized even when
+    # structured data and /fp/ URL extraction did not yield a company.
+    try:
+        h1_text = clean(await page.locator("h1").first.inner_text())
+    except Exception:
+        h1_text = ""
+
     # 3. Try metadata/title. We only accept candidates that look company-like.
     meta_candidates = []
     try:
@@ -2377,11 +2385,6 @@ async def extract_company_from_page(page):
                 return cand, "browser_meta"
 
     # 4. Employer links. Reject generic labels and personal names.
-    try:
-        h1_text = clean(await page.locator("h1").first.inner_text())
-    except Exception:
-        h1_text = ""
-
     employer_selectors = [
         'a[href*="/fp/"]',
         'a[href*="/firma/"]',
@@ -7241,7 +7244,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.7.3 — four-source data-role discovery")
+    print("🚀 Starting Job Agent v2.7.4 — four-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
