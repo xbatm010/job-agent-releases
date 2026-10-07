@@ -1600,11 +1600,15 @@ def parse_startupjobs_search(html, query):
 
         card_text = clean(card.get_text(" ", strip=True) if card else "")
         location = ""
+        # Prefer an explicit city over work-mode words so the Prague gate
+        # does not mistake "Hybrid Praha" for an unknown location.
         m = re.search(
-            r"\b(Praha(?:\s*\+\s*\d+\s*další)?|Prague|Remote|Hybrid)\b",
+            r"\b(Praha(?:\s*\+\s*\d+\s*další)?|Prague)\b",
             card_text,
             re.I,
         )
+        if not m:
+            m = re.search(r"\b(Remote|Hybrid)\b", card_text, re.I)
         if m:
             location = clean(m.group(1))
 
