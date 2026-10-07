@@ -294,6 +294,53 @@ jobs:
           ) == "Example Analytics s.r.o."
           print("Company extraction smoke test: OK")
 
+          class _FakeLocator:
+              def __init__(self, text="", content="", count=1):
+                  self._text = text
+                  self._content = content
+                  self._count = count
+
+              @property
+              def first(self):
+                  return self
+
+              async def count(self):
+                  return self._count
+
+              async def inner_text(self, *args, **kwargs):
+                  return self._text
+
+              async def get_attribute(self, name):
+                  return self._content if name == "content" else ""
+
+          class _FakeCompanyPage:
+              url = "https://www.jobs.cz/rpd/2001459385/"
+
+              async def evaluate(self, script):
+                  return ""
+
+              def locator(self, selector):
+                  if selector == "h1":
+                      return _FakeLocator(text="Business Intelligence Analyst - PART TIME")
+                  if selector == 'meta[property="og:title"]':
+                      return _FakeLocator(
+                          content=(
+                              "Business Intelligence Analyst - PART TIME | "
+                              "Example Analytics s.r.o."
+                          )
+                      )
+                  return _FakeLocator(count=0)
+
+              async def title(self):
+                  return "Business Intelligence Analyst - PART TIME | Jobs.cz"
+
+          company_name, company_source = main.asyncio.run(
+              main.extract_company_from_page(_FakeCompanyPage())
+          )
+          assert company_name == "Example Analytics s.r.o."
+          assert company_source == "browser_meta"
+          print("h1_text company extraction regression test: OK")
+
           submitted = dict(job)
           submitted.update({
               "job_id": "jobs.cz:2001320839",
