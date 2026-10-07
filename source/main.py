@@ -1571,15 +1571,23 @@ def parse_startupjobs_search(html, query):
             continue
 
         card = _card_for_anchor(a)
-        title = clean(a.get_text(" ", strip=True))
+
+        # StartupJobs often wraps the entire card in the /nabidka/ link. Prefer
+        # the actual card heading so company, location and contract badges do
+        # not get glued into the vacancy title in discovery preview.
+        heading = None
+        if card:
+            heading = card.find(["h1", "h2", "h3", "h4"])
+        title = clean(
+            heading.get_text(" ", strip=True)
+            if heading
+            else a.get_text(" ", strip=True)
+        )
         if (
             not title
             or len(title) > 180
             or title.lower() in {"detail", "zobrazit", "více", "vice", "mám zájem"}
         ):
-            heading = card.find(["h1", "h2", "h3", "h4"]) if card else None
-            title = clean(heading.get_text(" ", strip=True)) if heading else ""
-        if not title:
             continue
 
         company = ""
@@ -1764,6 +1772,12 @@ def discover_indeed_cz(session):
         url = f"{INDEED_BASE}/jobs?{params}"
         try:
             r = session.get(url, timeout=20, headers=discovery_headers())
+            if r.status_code == 403:
+                print(
+                    "⚠️ Indeed.cz blocked direct HTTP discovery (403); "
+                    "switching to normal Chromium discovery."
+                )
+                break
             r.raise_for_status()
             for job in parse_indeed_search(r.text, query):
                 key = history_key(job)
@@ -1771,34 +1785,74 @@ def discover_indeed_cz(session):
                     continue
                 seen.add(key)
                 jobs.append(job)
+        except requests.HTTPError as exc:
+            print(
+                f"⚠️ Indeed.cz HTTP discovery unavailable: "
+                f"{getattr(exc.response, 'status_code', 'HTTP error')}"
+            )
+            break
         except Exception as exc:
-            print(f"⚠️ Indeed.cz search failed for '{query}': {exc}")
+            print(
+                f"⚠️ Indeed.cz search failed for '{query}': "
+                f"{type(exc).__name__}: {exc}"
+            )
 
     jobs.sort(key=discovery_priority, reverse=True)
     return jobs[:MAX_DISCOVERY_PER_SOURCE]
 
 
-async def browser_discovery_fallback(specs, parser, source_name):
+async def browser_discovery_fallback(
+    specs,
+    parser,
+    source_name,
+    *,
+    persistent=False,
+    headless=True,
+):
     """
     Read-only fallback when a public search page returns no parsable jobs over
     plain HTTP. No application controls are clicked and no form fields are used.
+
+    Some public boards reject non-browser HTTP clients. For those boards we can
+    use the user's normal Job Agent Chromium profile without changing cookies,
+    accepting consent, or attempting to evade an access challenge.
     """
     recovered, seen = [], set()
     if not specs:
         return recovered
 
+    browser = None
+    context = None
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
-                viewport={"width": 1440, "height": 1000},
-                locale="cs-CZ",
-            )
-            page = await context.new_page()
+            if persistent:
+                context = await p.chromium.launch_persistent_context(
+                    str(resolve_browser_profile_dir()),
+                    headless=headless,
+                    viewport={"width": 1440, "height": 1000},
+                    locale="cs-CZ",
+                )
+                page = (
+                    context.pages[0]
+                    if context.pages
+                    else await context.new_page()
+                )
+            else:
+                browser = await p.chromium.launch(headless=headless)
+                context = await browser.new_context(
+                    viewport={"width": 1440, "height": 1000},
+                    locale="cs-CZ",
+                )
+                page = await context.new_page()
+
             for query, url in specs:
                 try:
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    await page.wait_for_timeout(1800)
+                    await page.goto(
+                        url,
+                        wait_until="domcontentloaded",
+                        timeout=30000,
+                    )
+                    await page.wait_for_timeout(2200)
                     html = await page.content()
                     for job in parser(html, query):
                         key = history_key(job)
@@ -1807,11 +1861,32 @@ async def browser_discovery_fallback(specs, parser, source_name):
                         seen.add(key)
                         recovered.append(job)
                 except Exception as exc:
-                    print(f"⚠️ {source_name} browser discovery failed for '{query}': {exc}")
+                    print(
+                        f"⚠️ {source_name} browser discovery failed for "
+                        f"'{query}': {type(exc).__name__}"
+                    )
+
             await context.close()
-            await browser.close()
+            context = None
+            if browser is not None:
+                await browser.close()
+                browser = None
     except Exception as exc:
-        print(f"⚠️ {source_name} browser discovery unavailable: {exc}")
+        print(
+            f"⚠️ {source_name} browser discovery unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
+    finally:
+        if context is not None:
+            try:
+                await context.close()
+            except Exception:
+                pass
+        if browser is not None:
+            try:
+                await browser.close()
+            except Exception:
+                pass
 
     recovered.sort(key=discovery_priority, reverse=True)
     return recovered[:MAX_DISCOVERY_PER_SOURCE]
@@ -1916,11 +1991,22 @@ async def discover_all(session):
                 "sort": "date",
             })
             specs.append((query, f"{INDEED_BASE}/jobs?{params}"))
+        print(
+            "🌐 Indeed.cz: opening read-only Chromium discovery. "
+            "A browser window may appear briefly."
+        )
         indeed_cz = await browser_discovery_fallback(
             specs,
             parse_indeed_search,
             "Indeed.cz",
+            persistent=True,
+            headless=False,
         )
+        if not indeed_cz:
+            print(
+                "⚠️ Indeed.cz returned no parsable vacancies in normal "
+                "Chromium. The source will be skipped for this run."
+            )
 
     print(f"🔎 Jobs.cz discovery: {len(jobs_cz)} candidate(s)")
     print(f"🔎 Prace.cz discovery: {len(prace_cz)} candidate(s)")
