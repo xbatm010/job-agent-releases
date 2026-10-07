@@ -1932,16 +1932,61 @@ def discover_indeed_cz(session):
     return jobs[:MAX_DISCOVERY_PER_SOURCE]
 
 
-async def wait_for_manual_access_challenge(page, source_name, query, target_url):
+def browser_page_is_live(page):
+    if page is None:
+        return False
+    try:
+        return not page.is_closed()
+    except Exception:
+        return False
+
+
+async def recover_live_browser_page(context, preferred=None, wait_ms=1200):
+    """
+    Return an open page from the existing browser context.
+
+    Some verification flows replace the current target/tab. Reusing another
+    page from the same persistent context preserves the user's verified session
+    without relaunching the browser or interacting with the challenge.
+    """
+    if browser_page_is_live(preferred):
+        return preferred
+
+    try:
+        for candidate in reversed(context.pages):
+            if browser_page_is_live(candidate):
+                return candidate
+    except Exception:
+        return None
+
+    if wait_ms > 0:
+        try:
+            candidate = await context.wait_for_event("page", timeout=wait_ms)
+            if browser_page_is_live(candidate):
+                return candidate
+        except Exception:
+            pass
+
+    return None
+
+
+async def wait_for_manual_access_challenge(
+    page,
+    context,
+    source_name,
+    query,
+    target_url,
+):
     """
     Pause on a visible anti-bot challenge and let the user solve it manually.
 
     The agent never clicks, fills or otherwise interacts with the challenge.
-    Once the challenge disappears, the same browser session is reused and the
-    search page is parsed normally.
+    Once the challenge disappears, the verified persistent browser session is
+    reused. If Indeed replaces the challenge tab, the agent follows the new
+    live page in the same context.
     """
     if not source_name.lower().startswith("indeed"):
-        return False, "", ""
+        return False, "", "", page
 
     wait_seconds = max(1, INDEED_MANUAL_CHALLENGE_WAIT_SECONDS)
     poll_ms = max(250, INDEED_MANUAL_CHALLENGE_POLL_MS)
@@ -1960,12 +2005,45 @@ async def wait_for_manual_access_challenge(page, source_name, query, target_url)
 
     elapsed_ms = 0
     while elapsed_ms < wait_seconds * 1000:
-        await page.wait_for_timeout(poll_ms)
+        live_page = await recover_live_browser_page(
+            context,
+            page,
+            wait_ms=min(poll_ms, 1200),
+        )
+        if live_page is None:
+            print(
+                f"⚠️ {source_name}: Chromium window/session was closed during "
+                "manual verification; skipping Indeed for this run."
+            )
+            return False, "", "", None
+
+        if live_page is not page:
+            page = live_page
+            print(
+                f"🔄 {source_name}: verification replaced the browser tab; "
+                "continuing with the new tab."
+            )
+
+        try:
+            await page.wait_for_timeout(poll_ms)
+        except Exception:
+            page = await recover_live_browser_page(context, None, wait_ms=1200)
+            if page is None:
+                print(
+                    f"⚠️ {source_name}: Chromium window/session was closed during "
+                    "manual verification; skipping Indeed for this run."
+                )
+                return False, "", "", None
+            continue
+
         elapsed_ms += poll_ms
 
         try:
             html = await page.content()
         except Exception:
+            page = await recover_live_browser_page(context, None, wait_ms=1200)
+            if page is None:
+                return False, "", "", None
             continue
 
         visible = ""
@@ -1981,7 +2059,7 @@ async def wait_for_manual_access_challenge(page, source_name, query, target_url)
 
         # Verification is gone. Indeed normally restores the requested search
         # page automatically. If it lands elsewhere, revisit the original
-        # search URL once using the now-verified persistent session.
+        # search URL once using the same verified persistent session.
         current = page.url or ""
         if "/jobs" not in current.lower():
             try:
@@ -2000,20 +2078,24 @@ async def wait_for_manual_access_challenge(page, source_name, query, target_url)
                 except Exception:
                     pass
             except Exception:
-                pass
+                replacement = await recover_live_browser_page(
+                    context, page, wait_ms=1200
+                )
+                if replacement is not None:
+                    page = replacement
 
         if not is_access_challenge_page(html, visible):
             print(
                 f"✅ {source_name}: manual verification completed; "
                 "resuming discovery."
             )
-            return True, html, visible
+            return True, html, visible, page
 
     print(
         f"⌛ {source_name}: manual verification wait expired after "
         f"{wait_seconds} seconds; skipping this source for the current run."
     )
-    return False, "", ""
+    return False, "", "", page
 
 
 async def browser_discovery_fallback(
