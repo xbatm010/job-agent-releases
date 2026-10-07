@@ -2257,16 +2257,45 @@ async def browser_discovery_fallback(
                     message = str(exc).lower()
 
                     # Some Indeed challenge redirects interrupt page.goto()
-                    # before the normal challenge check above can run. Inspect
-                    # the live page once; if it is a visible challenge, pause
-                    # for manual verification instead of classifying it as a
-                    # generic navigation loop.
+                    # or replace the current page target. Recover another live
+                    # page from the same persistent context before deciding that
+                    # discovery has failed.
                     if (
                         source_name.lower().startswith("indeed")
                         and persistent
                         and not headless
                     ):
+                        recovered_page = await recover_live_browser_page(
+                            context,
+                            page,
+                            wait_ms=1500,
+                        )
+                        if recovered_page is None:
+                            print(
+                                "⚠️ Indeed.cz Chromium window/session closed; "
+                                "stopping Indeed discovery for this run."
+                            )
+                            break
+
+                        if recovered_page is not page:
+                            page = recovered_page
+                            attach_navigation_listener(page)
+                            print(
+                                "🔄 Indeed.cz recovered a replacement browser "
+                                "tab after the previous target closed."
+                            )
+
                         try:
+                            # If the replacement page is not already on the
+                            # current search, revisit the requested URL once.
+                            if "/jobs" not in (page.url or "").lower():
+                                await page.goto(
+                                    url,
+                                    wait_until="domcontentloaded",
+                                    timeout=30000,
+                                )
+                                await page.wait_for_timeout(1000)
+
                             html = await page.content()
                             visible = ""
                             try:
@@ -2304,8 +2333,36 @@ async def browser_discovery_fallback(
                                         recovered.append(job)
                                     continue
                                 break
-                        except Exception:
-                            pass
+
+                            # The page recovered without a challenge. Parse the
+                            # current search once and continue with the next
+                            # query instead of reporting the stale exception.
+                            parsed_any = False
+                            for job in parser(html, query):
+                                parsed_any = True
+                                key = history_key(job)
+                                if key in seen:
+                                    continue
+                                seen.add(key)
+                                recovered.append(job)
+                            if parsed_any:
+                                print(
+                                    f"✅ {source_name}: recovered '{query}' "
+                                    "after browser target replacement."
+                                )
+                                continue
+                        except Exception as recovery_exc:
+                            recovery_message = str(recovery_exc).lower()
+                            if (
+                                "closed" in recovery_message
+                                or type(recovery_exc).__name__.lower()
+                                == "targetclosederror"
+                            ):
+                                print(
+                                    "⚠️ Indeed.cz Chromium window/session closed; "
+                                    "stopping Indeed discovery for this run."
+                                )
+                                break
 
                     if (
                         source_name.lower().startswith("indeed")
