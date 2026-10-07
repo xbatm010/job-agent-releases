@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 19,
   "version": "2.7.4",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Desktop 2.7.4 hotfix fixes a Jobs.cz application-preparation crash caused by h1_text being referenced before initialization during browser company extraction. h1_text is now resolved before metadata/title parsing, so APPLY candidates can continue into company extraction and form preparation. A regression smoke test reproduces the metadata path that crashed in 2.7.3. The v2.7.3 scoring, Indeed CAPTCHA/reload-loop handling, discovery rules, manual final Submit safety and thresholds are unchanged.",
-  "last_published": "2.7.3",
-  "last_sha256": "bb5a4888fe68f8826cbc86f38c11c2de9be254b2af0aa760c506c3dad9f43169"
+  "last_published": "2.7.4",
+  "last_sha256": "3c02c185529a43a9d77820e85889f3a629973f2c5c9299fc11151d71b7010b8d"
 }

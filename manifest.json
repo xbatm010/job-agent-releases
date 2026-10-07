@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.7.3",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.3/job-agent-2.7.3-macos.zip",
-      "sha256": "bb5a4888fe68f8826cbc86f38c11c2de9be254b2af0aa760c506c3dad9f43169",
-      "notes": "Desktop 2.7.3 improves first-job discovery and handles Indeed anti-bot challenges safely. Default scoring is recalibrated to target APPLY 66, verified target promotion 64, entry APPLY 62, expanded APPLY 70, expanded REVIEW 58 and REVIEW 55; untouched v2.7.2 Desktop defaults migrate automatically while custom thresholds are preserved. Data Analytics internships and selected AI/automation trainee/student roles are now discovered and can qualify only when strong vacancy evidence and concrete data-skill signals support them. Ranking logs now distinguish strong evidence verification from near-threshold promotion. Indeed Chromium discovery detects CAPTCHA/security pages and repeated navigation/reload loops, stops retries for the run, and never attempts to bypass human verification. StartupJobs.cz and Indeed.cz remain discovery-only, and final employer Submit remains manual.",
+      "version": "2.7.4",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.4/job-agent-2.7.4-macos.zip",
+      "sha256": "3c02c185529a43a9d77820e85889f3a629973f2c5c9299fc11151d71b7010b8d",
+      "notes": "Desktop 2.7.4 hotfix fixes a Jobs.cz application-preparation crash caused by h1_text being referenced before initialization during browser company extraction. h1_text is now resolved before metadata/title parsing, so APPLY candidates can continue into company extraction and form preparation. A regression smoke test reproduces the metadata path that crashed in 2.7.3. The v2.7.3 scoring, Indeed CAPTCHA/reload-loop handling, discovery rules, manual final Submit safety and thresholds are unchanged.",
       "min_version": "2.3.1"
     }
   }
