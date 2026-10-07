@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 28,
   "version": "2.9.0",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 2.9.0 introduces the selected light desktop design: sidebar navigation, a readable vacancy table, a detail inspector with scores and reasons, separate profile/settings/update controls, favorites, translated filters and one-click log copying. Narrow windows place details below the table. Desktop now defaults to search-only: search, score and save vacancies without a CV or application forms, then prepare a selected vacancy explicitly. Uncheck 'Только поиск' for search-and-prepare runs. Existing contacts, CV paths, custom thresholds and confirmed history are preserved. Source badges distinguish results, partial errors, loading failures and zero parsed vacancies; StartupJobs diagnostics include HTTP and browser results. Location-only employer values such as Prague are rejected and explicit entry vacancies receive browser-evidence priority. Sent vacancies cannot re-enter the ready-to-apply filter. Final employer Submit remains manual. Validation includes 29 offline tests with actual Qt widgets, prior smoke checks and wide/narrow layout inspection.",
-  "last_published": "2.8.2",
-  "last_sha256": "e25c664a1882f25eccedd280cd17369a200506ab41f0e12d37dd92d5ad5300cf"
+  "last_published": "2.9.0",
+  "last_sha256": "0eede81f7a01a32ed70b20c60c21cdbcd842449759b56ee962930c1d248f7693"
 }
