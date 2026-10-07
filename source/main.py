@@ -777,6 +777,8 @@ def valid_company(name, source="generic"):
         "kontakt", "contact person", "recruiter", "náborář",
         "číst více", "zobrazit více", "více informací", "detail",
         "profil firmy", "learn more", "read more", "show more",
+        "jobs.cz", "prace.cz", "jobs cz", "prace cz",
+        "nabídky práce", "nabidky prace", "job offers",
     ]
     if any(x in low for x in bad):
         return False
@@ -839,6 +841,38 @@ def extract_company(soup):
                 return name
     return ""
 
+def extract_company_from_search_card(article, title=""):
+    """
+    Conservative company extraction from a Jobs.cz search-result card.
+    Prefer explicit company/employer DOM hooks and employer/profile links.
+    """
+    if article is None:
+        return ""
+
+    selectors = [
+        "[data-testid*='company']",
+        "[data-test*='company']",
+        "[class*='company']",
+        "[class*='Company']",
+        "[class*='employer']",
+        "a[href*='/firma/']",
+        "a[href*='/zamestnavatel/']",
+    ]
+    for sel in selectors:
+        try:
+            for el in article.select(sel):
+                name = clean(el.get_text(" ", strip=True))
+                if not name:
+                    continue
+                if title and normalize_key_text(name) == normalize_key_text(title):
+                    continue
+                if valid_company(name, "search_card"):
+                    return name
+        except Exception:
+            pass
+    return ""
+
+
 def parse_search(html, query):
     soup = BeautifulSoup(html, "html.parser")
     jobs, seen = [], set()
@@ -850,12 +884,14 @@ def parse_search(html, query):
             continue
         seen.add(jid)
         article = a.find_parent("article")
+        company = extract_company_from_search_card(article, title)
         jobs.append({
             "job_id": jid,
             "title": title,
             "actual_title": title,
             "url": href,
-            "company": "",
+            "company": company,
+            "company_source": "search_card" if company else "",
             "description": "",
             "card_text": clean(article.get_text(" ", strip=True) if article else ""),
             "search_query": query,
@@ -880,12 +916,17 @@ def enrich_job(job, session):
             org = structured.get("hiringOrganization")
             if isinstance(org, dict) and org.get("name") and not job.get("company"):
                 job["company"] = clean(str(org.get("name")))
+                job["company_source"] = "http_jsonld"
 
             structured_loc = jsonld_location(structured)
             if structured_loc and not job.get("location"):
                 job["location"] = structured_loc
 
-        job["company"] = job.get("company") or extract_company(soup)
+        if not job.get("company"):
+            detected_company = extract_company(soup)
+            if detected_company:
+                job["company"] = detected_company
+                job["company_source"] = "http_dom"
         body_main = soup.find("main") or soup.body
         visible_description = clean(
             body_main.get_text(" ", strip=True) if body_main else ""
@@ -1676,14 +1717,32 @@ async def extract_company_from_page(page):
     for raw in meta_candidates:
         parts = [clean(x) for x in re.split(r"\s+[|–—-]\s+", raw) if clean(x)]
         for cand in reversed(parts):
-            if valid_company(cand, "meta"):
-                low = cand.lower()
-                if any(mark in low for mark in [
-                    "s.r.o", "a.s", "group", "bank", "services",
-                    "solutions", "consulting", "česká republika",
-                    "czech republic", "gmbh", "llc", "ltd",
-                ]):
-                    return cand, "browser_meta"
+            low = cand.lower()
+            if low in {"jobs.cz", "prace.cz", "jobs", "prace"}:
+                continue
+            if h1_text and normalize_key_text(cand) == normalize_key_text(h1_text):
+                continue
+            if not valid_company(cand, "meta"):
+                continue
+
+            # Legal/corporate markers are strongest. Otherwise accept a short
+            # distinct title segment only when it is not a generic portal label.
+            has_corp_marker = any(mark in low for mark in [
+                "s.r.o", "a.s", "group", "bank", "services",
+                "solutions", "consulting", "česká republika",
+                "czech republic", "gmbh", "llc", "ltd",
+            ])
+            portal_words = [
+                "pracovní nabídka", "pracovni nabidka", "volná místa",
+                "volna mista", "nabídka práce", "nabidka prace",
+                "jobs.cz", "prace.cz",
+            ]
+            if has_corp_marker or (
+                len(cand) <= 90
+                and not any(x in low for x in portal_words)
+                and len(cand.split()) <= 8
+            ):
+                return cand, "browser_meta"
 
     # 4. Employer links. Reject generic labels and personal names.
     try:
@@ -1699,6 +1758,11 @@ async def extract_company_from_page(page):
         '[itemprop="hiringOrganization"]',
         '[data-testid*="employer"]',
         '[data-test*="employer"]',
+        '[data-testid*="company"]',
+        '[data-test*="company"]',
+        '[class*="company"]',
+        '[class*="Company"]',
+        '[class*="employer"]',
     ]
     for frame in await page_contexts(page):
         for sel in employer_selectors:
@@ -6356,6 +6420,104 @@ def print_application_result(index, total, target, status, reason, current_url, 
         )
 
     print(f"Current URL: {current_url}")
+
+
+async def prepare_single_job(job):
+    """
+    Prepare exactly one user-selected vacancy from Desktop.
+
+    The vacancy is re-scored and re-checked for location, evidence quality and
+    hard experience blockers before any form is prepared. Final employer Submit
+    remains controlled by the existing manual-submit hold.
+    """
+    target = dict(job or {})
+    if not target.get("url"):
+        raise ValueError("Selected vacancy has no URL.")
+
+    target["source"] = target.get("source") or source_from_url(target["url"])
+    target["job_id"] = target.get("job_id") or source_job_id(target["url"])
+    target["title"] = target.get("title") or target.get("actual_title") or "Selected vacancy"
+    target["actual_title"] = target.get("actual_title") or target["title"]
+
+    print("\n" + "=" * 72)
+    print("PREPARE NOW")
+    print("=" * 72)
+    print(
+        f"🎯 [{target.get('source')}] [{target.get('job_id')}] "
+        f"{target.get('actual_title') or target.get('title')}"
+    )
+
+    # Refresh weak/missing HTTP details without discarding a richer saved
+    # browser-rendered description.
+    saved_description = str(target.get("description", "") or "")
+    saved_company = str(target.get("company", "") or "")
+    session = requests.Session()
+    refreshed = enrich_job(dict(target), session)
+    if len(saved_description) > len(str(refreshed.get("description", "") or "")):
+        refreshed["description"] = saved_description
+        refreshed["evidence_quality"] = evidence_quality_for_text(saved_description)
+        refreshed["evidence_length"] = len(saved_description)
+        if target.get("evidence_source"):
+            refreshed["evidence_source"] = target.get("evidence_source")
+    if saved_company and not refreshed.get("company"):
+        refreshed["company"] = saved_company
+        refreshed["company_source"] = target.get("company_source", "dashboard_snapshot")
+
+    target = refreshed
+    result = score_job(target)
+    loc_allowed, loc_reason, resolved_location = location_gate(target)
+    target["location_gate"] = loc_reason
+    target["resolved_location"] = resolved_location
+
+    if loc_allowed is False:
+        result["decision"] = "SKIP"
+        result["score"] = min(result["score"], 20)
+        result.setdefault("reasons", []).append(f"location_gate:{loc_reason}")
+    elif loc_allowed is None and result["decision"] == "APPLY":
+        result["decision"] = "REVIEW"
+        result["score"] = min(result["score"], MIN_APPLY_SCORE - 1)
+        result.setdefault("reasons", []).append("location_gate:unknown_location")
+
+    target.update(result)
+
+    if target["decision"] == "REVIEW" and manual_review_apply_eligible(target, loc_allowed):
+        target["decision"] = "APPLY"
+        target["manual_queue"] = True
+        target.setdefault("reasons", []).append("desktop_prepare_now")
+    elif target["decision"] != "APPLY":
+        status = "SKIPPED" if target["decision"] == "SKIP" else "REVIEW_PENDING"
+        reason = "; ".join(target.get("reasons", [])[:12])
+        save_status(target, status, target["score"], reason)
+        print(
+            f"🛑 Prepare now blocked after re-check: "
+            f"decision={target['decision']} score={target['score']} "
+            f"evidence={target.get('evidence_quality')} "
+            f"location={loc_reason}"
+        )
+        return status, reason, target.get("url", ""), {}
+
+    print(
+        f"✅ Re-check passed: APPLY {target['score']}/100 | "
+        f"evidence={target.get('evidence_quality')} | location={loc_reason}"
+    )
+
+    try:
+        status, reason, current_url, form = await prepare_application(target)
+    except Exception as exc:
+        status = "APPLICATION_ERROR"
+        reason = f"{type(exc).__name__}: {exc}"
+        current_url = target.get("url", "")
+        form = {}
+
+    save_status(target, status, target["score"], reason)
+    print_application_result(1, 1, target, status, reason, current_url, form)
+
+    print("\n" + "=" * 72)
+    print("PREPARE NOW SUMMARY")
+    print("=" * 72)
+    print(f"Status: {status}")
+    print("Final employer Submit remains manual.")
+    return status, reason, current_url, form
 
 
 async def main():
