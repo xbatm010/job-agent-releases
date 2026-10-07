@@ -1,12 +1,10 @@
 {
-  "publish": false,
-  "request_id": 11,
-  "version": "2.5.1",
+  "publish": true,
+  "request_id": 12,
+  "version": "2.5.2",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.5.1 is a duplicate-application safety hotfix. Legacy vacancy IDs such as jobs.cz:<id> and canonical job:<id> are now merged in Dashboard, confirmed terminal history is authoritative, and Prepare now checks local submission history both in the UI and again inside the engine before opening any application form. This prevents a previously submitted vacancy from being prepared again. Final employer Submit remains manual.",
-  "last_published": "2.5.1",
-  "last_sha256": "9f0ff92f8127fd573cdf3d2acccd9df6863fb2d33d169550395a1544b60800b4"
+  "notes": "Desktop 2.5.2 fixes horizontal overflow on smaller or scaled macOS displays. The startup window now fits the available screen, the left settings pane is constrained, long header text wraps, Dashboard filters use a compact two-row grid, and the nine Dashboard actions are arranged in a 3x3 grid instead of one wide row. Duplicate-application protections from 2.5.1 and manual final Submit safety remain unchanged."
 }
