@@ -227,6 +227,12 @@ jobs:
           assert "Praha + surroundings" in desktop
           assert "Chromium for weak jobs" in desktop
           assert "Czech Průvodní dopis" in desktop
+          assert "source_startupjobs" in desktop
+          assert "source_indeed" in desktop
+          assert "StartupJobs.cz" in desktop
+          assert "Indeed.cz" in desktop
+          assert "discovery-only" in desktop
+          print("Four-source Desktop controls smoke test: OK")
           print("Narrow settings layout smoke test: OK")
           print("Responsive Desktop layout smoke test: OK")
           PY
@@ -259,6 +265,7 @@ jobs:
 
           safe = dict(job)
           safe.update({
+              "source": "jobs.cz",
               "score": 69,
               "decision": "REVIEW",
               "evidence_quality": "strong",
@@ -303,6 +310,45 @@ jobs:
               "jobs.cz:2001320839"
           ) == "job:2001320839"
           print("Duplicate-application history guard smoke test: OK")
+
+          startup_html = """
+          <article>
+            <h2><a href="/nabidka/108259/data-analyst-crm-campaigns">Data Analyst (CRM &amp; Campaigns)</a></h2>
+            <a href="/startup/example-company">Example Company s.r.o.</a>
+            <div>Hybrid Praha Full-time SQL reporting</div>
+          </article>
+          """
+          startup = main.parse_startupjobs_search(startup_html, "Data analytik")
+          assert len(startup) == 1
+          assert startup[0]["source"] == "startupjobs.cz"
+          assert startup[0]["job_id"] == "108259"
+          assert startup[0]["company"] == "Example Company s.r.o."
+          assert "Praha" in startup[0]["location"]
+          assert not main.application_source_supported(startup[0])
+
+          indeed_html = """
+          <div class="job_seen_beacon">
+            <h2 class="jobTitle">
+              <a class="jcs-JobTitle" data-jk="abc123def456" href="/rc/clk?jk=abc123def456">
+                <span title="Junior Data Analyst">Junior Data Analyst</span>
+              </a>
+            </h2>
+            <span data-testid="company-name">Example Analytics</span>
+            <div data-testid="text-location">Praha</div>
+          </div>
+          """
+          indeed = main.parse_indeed_search(indeed_html, "Junior Data Analyst")
+          assert len(indeed) == 1
+          assert indeed[0]["source"] == "indeed.cz"
+          assert indeed[0]["job_id"] == "abc123def456"
+          assert indeed[0]["company"] == "Example Analytics"
+          assert indeed[0]["location"] == "Praha"
+          assert "viewjob?jk=abc123def456" in indeed[0]["url"]
+          assert not main.application_source_supported(indeed[0])
+
+          discovery_review = dict(safe, source="indeed.cz")
+          assert not main.manual_review_apply_eligible(discovery_review, True)
+          print("StartupJobs + Indeed discovery smoke test: OK")
 
           print("Dashboard persistence + manual queue safety smoke test: OK")
           PY
