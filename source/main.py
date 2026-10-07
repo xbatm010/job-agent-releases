@@ -6447,6 +6447,16 @@ async def prepare_single_job(job):
         f"{target.get('actual_title') or target.get('title')}"
     )
 
+    canonical_id = canonical_history_key(target)
+    processed = load_processed()
+    if canonical_id in processed:
+        reason = (
+            "Prepare now blocked: this vacancy already has a confirmed "
+            "submission in local history."
+        )
+        print(f"🛑 {reason} [{canonical_id}]")
+        return "ALREADY_SUBMITTED", reason, target.get("url", ""), {}
+
     # Refresh weak/missing HTTP details without discarding a richer saved
     # browser-rendered description.
     saved_description = str(target.get("description", "") or "")
