@@ -82,10 +82,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.7.8", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.7.9", "channel": "beta"}
 
 VERSION_INFO = None
-APP_VERSION = "2.7.8"
+APP_VERSION = "2.7.9"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -143,6 +143,9 @@ def brand_pixmap(size: int = 64) -> QPixmap:
 
 VERSION_INFO = load_version_info()
 APP_VERSION = str(VERSION_INFO.get("version", "2.0.0"))
+APP_CHANNEL = str(VERSION_INFO.get("channel", "stable")).strip().lower()
+if APP_CHANNEL not in {"stable", "beta"}:
+    APP_CHANNEL = "stable"
 
 def detect_legacy_profile() -> str:
     candidates = [
@@ -189,7 +192,8 @@ DEFAULTS = {
     "email": "",
     "phone": "",
     "browser_profile": detect_legacy_profile(),
-    "update_channel": "stable",
+    "update_channel": APP_CHANNEL,
+    "update_channel_explicit": False,
     "update_manifest_url": DEFAULT_UPDATE_MANIFEST_URL,
     "auto_check_updates": True,
 }
@@ -210,6 +214,7 @@ def load_settings() -> dict:
                     "expanded_apply": 74,
                     "review": 60,
                 }
+                settings_changed = False
                 if all(
                     saved.get(key, old_value) == old_value
                     for key, old_value in legacy_thresholds.items()
@@ -222,6 +227,26 @@ def load_settings() -> dict:
                         "expanded_apply": 70,
                         "review": 55,
                     })
+                    settings_changed = True
+
+                # Older beta builds incorrectly defaulted their updater to the
+                # stable channel. Migrate only that old implicit default. Once
+                # the user changes the channel in the UI we persist
+                # update_channel_explicit=True and never override the choice.
+                saved_channel = str(
+                    saved.get("update_channel", "")
+                ).strip().lower()
+                if (
+                    APP_CHANNEL == "beta"
+                    and saved_channel in {"", "stable"}
+                    and not bool(saved.get("update_channel_explicit", False))
+                ):
+                    saved = dict(saved)
+                    saved["update_channel"] = "beta"
+                    saved["update_channel_explicit"] = False
+                    settings_changed = True
+
+                if settings_changed:
                     try:
                         SETTINGS_FILE.write_text(
                             json.dumps(saved, ensure_ascii=False, indent=2),
@@ -229,6 +254,7 @@ def load_settings() -> dict:
                         )
                     except Exception:
                         pass
+
                 data.update(saved)
         except Exception:
             pass
@@ -664,6 +690,9 @@ class JobAgentWindow(QMainWindow):
 
         self._build_ui()
         self._load_widgets()
+        self.channel_combo.currentTextChanged.connect(
+            self._persist_update_channel
+        )
         self._fit_window_to_screen()
 
         self.timer = QTimer(self)
@@ -1672,7 +1701,9 @@ class JobAgentWindow(QMainWindow):
 
         self.cv_edit.setText(str(s["cv_path"]))
         self.profile_edit.setText(str(s["browser_profile"]))
-        self.channel_combo.setCurrentText(str(s.get("update_channel", "stable")))
+        self.channel_combo.setCurrentText(
+            str(s.get("update_channel", APP_CHANNEL))
+        )
 
         manifest_url = str(s.get("update_manifest_url", "")).strip()
         if not manifest_url:
@@ -1682,6 +1713,17 @@ class JobAgentWindow(QMainWindow):
         self.auto_update_check.setChecked(
             bool(s.get("auto_check_updates", True))
         )
+
+    def _persist_update_channel(self, channel):
+        channel = str(channel or "").strip().lower()
+        if channel not in {"stable", "beta"}:
+            return
+        self.settings["update_channel"] = channel
+        self.settings["update_channel_explicit"] = True
+        try:
+            save_settings(self.settings)
+        except Exception:
+            pass
 
     def _collect_settings(self):
         return {
@@ -1706,6 +1748,9 @@ class JobAgentWindow(QMainWindow):
             "cv_path": self.cv_edit.text().strip(),
             "browser_profile": self.profile_edit.text().strip(),
             "update_channel": self.channel_combo.currentText().strip(),
+            "update_channel_explicit": bool(
+                self.settings.get("update_channel_explicit", False)
+            ),
             "update_manifest_url": (
                 self.manifest_edit.text().strip()
                 or DEFAULT_UPDATE_MANIFEST_URL
