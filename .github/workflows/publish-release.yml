@@ -232,7 +232,13 @@ jobs:
           assert "StartupJobs.cz" in desktop
           assert "Indeed.cz" in desktop
           assert "discovery-only" in desktop
+          assert 'APP_CHANNEL = str(VERSION_INFO.get("channel", "stable"))' in desktop
+          assert '"update_channel": APP_CHANNEL' in desktop
+          assert '"update_channel_explicit": False' in desktop
+          assert "def _persist_update_channel" in desktop
+          assert "currentTextChanged.connect" in desktop
           print("Four-source Desktop controls smoke test: OK")
+          print("Beta update-channel migration smoke test: OK")
           print("Narrow settings layout smoke test: OK")
           print("Responsive Desktop layout smoke test: OK")
           PY
