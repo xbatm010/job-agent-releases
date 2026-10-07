@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.7.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.0/job-agent-2.7.0-macos.zip",
-      "sha256": "91b5bdf4109e33e403ba02028f9feb4d9279b02c983c9006d5b6e8de0c595271",
-      "notes": "Desktop 2.7.0 expands discovery from two to four sources by adding StartupJobs.cz and Indeed.cz alongside Jobs.cz and Prace.cz. The new sources have dedicated parsers, source toggles, Dashboard filters, cross-source deduplication, and a read-only Chromium discovery fallback when plain HTTP returns no parsable jobs. StartupJobs.cz and Indeed.cz are intentionally discovery-only in this release: high-scoring vacancies are shown as REVIEW and can be opened manually, but they cannot enter Queue application or Prepare now. Existing duplicate-submission protection and manual final Submit safety remain unchanged.",
+      "version": "2.7.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.1/job-agent-2.7.1-macos.zip",
+      "sha256": "629fe19096b57aedc3a8af0a9dac2f423dfbf15e62430b528b5c10a4b4eed9ab",
+      "notes": "Desktop 2.7.1 improves the new StartupJobs/Indeed discovery integration. Indeed now stops after the first direct HTTP 403 and switches to a normal read-only Chromium session using the persistent Job Agent browser profile; no consent buttons are clicked and no access challenge is bypassed. StartupJobs discovery now prefers the semantic vacancy heading so company/location badges are not glued into titles. Four-source review breadth increases from 24 to 36 ranked vacancies and browser evidence capacity from 10 to 12. StartupJobs.cz and Indeed.cz remain discovery-only; final application submission remains manual.",
       "min_version": "2.3.1"
     }
   }
