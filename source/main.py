@@ -102,6 +102,8 @@ CV_PATH = os.getenv("CV_PATH", "").strip()
 BROWSER_PROFILE_DIR = os.getenv("BROWSER_PROFILE_DIR", "./browser_profile")
 SOURCE_JOBS_CZ = os.getenv("SOURCE_JOBS_CZ", "true").lower() == "true"
 SOURCE_PRACE_CZ = os.getenv("SOURCE_PRACE_CZ", "true").lower() == "true"
+SOURCE_STARTUPJOBS_CZ = os.getenv("SOURCE_STARTUPJOBS_CZ", "true").lower() == "true"
+SOURCE_INDEED_CZ = os.getenv("SOURCE_INDEED_CZ", "true").lower() == "true"
 MAX_DISCOVERY_PER_SOURCE = int(os.getenv("MAX_DISCOVERY_PER_SOURCE", "60"))
 LOCATION_MODE = os.getenv("LOCATION_MODE", "prague").strip().lower()
 ALLOWED_LOCATION_TERMS = [x.strip() for x in os.getenv(
@@ -118,6 +120,28 @@ BLOCKED_LOCATION_TERMS = [x.strip() for x in os.getenv(
 
 BASE = "https://www.jobs.cz"
 PRACE_BASE = "https://www.prace.cz"
+STARTUPJOBS_BASE = "https://www.startupjobs.cz"
+INDEED_BASE = "https://cz.indeed.com"
+
+# StartupJobs/Indeed are discovery-only in v2.7.0. They can be scored,
+# reviewed and opened from Dashboard, but cannot enter the application queue.
+APPLICATION_SUPPORTED_SOURCES = {"jobs.cz", "prace.cz"}
+
+STARTUPJOBS_SEARCH_ROUTES = [
+    (
+        "Data analytik",
+        "/nabidky/data-analytik?lokalita=Praha%3AChIJi3lwCZyTC0cRkEAWZg-vAAQ%3A20km",
+    ),
+]
+
+INDEED_SEARCH_QUERIES = [
+    "Data Analyst",
+    "Junior Data Analyst",
+    "BI Analyst",
+    "Reporting Analyst",
+    "Business Data Analyst",
+    "Data Specialist",
+]
 
 PRACE_SEARCH_ROUTES = [
     ("Datový analytik", "/nabidky/datovy-analytik/"),
@@ -252,6 +276,10 @@ def normalize_key_text(text):
 
 def source_from_url(url):
     low = (url or "").lower()
+    if "startupjobs.cz" in low:
+        return "startupjobs.cz"
+    if "indeed.com" in low:
+        return "indeed.cz"
     if "prace.cz" in low:
         return "prace.cz"
     if "jobs.cz" in low:
@@ -267,6 +295,23 @@ def prace_job_id_from_url(url):
     return m.group(1).lower() if m else None
 
 
+def startupjobs_job_id_from_url(url):
+    m = re.search(r"/nabidka/(\d+)(?:/|$)", url or "", re.I)
+    return m.group(1) if m else None
+
+
+def indeed_job_id_from_url(url):
+    parsed = urlparse(url or "")
+    qs = parse_qs(parsed.query)
+    for key in ("jk", "vjk"):
+        value = (qs.get(key) or [""])[0].strip()
+        if value:
+            return value
+
+    m = re.search(r"[?&](?:jk|vjk)=([A-Za-z0-9_-]+)", url or "", re.I)
+    return m.group(1) if m else None
+
+
 def stable_external_id(url):
     digest = hashlib.sha1((url or "").encode("utf-8")).hexdigest()[:16]
     return f"ext-{digest}"
@@ -279,6 +324,12 @@ def source_job_id(url):
         return jid or stable_external_id(url)
     if source == "prace.cz":
         jid = prace_job_id_from_url(url)
+        return jid or stable_external_id(url)
+    if source == "startupjobs.cz":
+        jid = startupjobs_job_id_from_url(url)
+        return jid or stable_external_id(url)
+    if source == "indeed.cz":
+        jid = indeed_job_id_from_url(url)
         return jid or stable_external_id(url)
     return stable_external_id(url)
 
@@ -1406,6 +1457,10 @@ def load_job_overrides():
         return {}
 
 
+def application_source_supported(job):
+    return str(job.get("source", "")).strip().lower() in APPLICATION_SUPPORTED_SOURCES
+
+
 def manual_review_apply_eligible(job, loc_allowed):
     try:
         score = int(job.get("score", 0))
@@ -1413,7 +1468,8 @@ def manual_review_apply_eligible(job, loc_allowed):
         score = 0
 
     return (
-        str(job.get("decision", "")).upper() == "REVIEW"
+        application_source_supported(job)
+        and str(job.get("decision", "")).upper() == "REVIEW"
         and score >= MANUAL_REVIEW_APPLY_MIN_SCORE
         and str(job.get("role_class", "")).lower() in {"target", "expanded"}
         and str(job.get("evidence_quality", "")).lower() == "strong"
@@ -1482,6 +1538,281 @@ def save_status(job, status, score, reason):
     except Exception:
         pass
 
+def _card_for_anchor(a):
+    """
+    Best-effort compact search-result container for public job boards.
+    Prefer semantic containers; otherwise walk upward until enough context is
+    available without swallowing the whole page.
+    """
+    for tag in ("article", "li"):
+        parent = a.find_parent(tag)
+        if parent is not None:
+            return parent
+
+    node = a
+    for _ in range(6):
+        node = getattr(node, "parent", None)
+        if node is None or not getattr(node, "get_text", None):
+            break
+        text = clean(node.get_text(" ", strip=True))
+        if 80 <= len(text) <= 2200:
+            return node
+    return a.parent
+
+
+def parse_startupjobs_search(html, query):
+    soup = BeautifulSoup(html, "html.parser")
+    jobs, seen = [], set()
+
+    for a in soup.select('a[href*="/nabidka/"]'):
+        href = urljoin(STARTUPJOBS_BASE, a.get("href", ""))
+        jid = startupjobs_job_id_from_url(href)
+        if not jid or jid in seen:
+            continue
+
+        card = _card_for_anchor(a)
+        title = clean(a.get_text(" ", strip=True))
+        if (
+            not title
+            or len(title) > 180
+            or title.lower() in {"detail", "zobrazit", "více", "vice", "mám zájem"}
+        ):
+            heading = card.find(["h1", "h2", "h3", "h4"]) if card else None
+            title = clean(heading.get_text(" ", strip=True)) if heading else ""
+        if not title:
+            continue
+
+        company = ""
+        if card:
+            for sel in [
+                'a[href*="/startup/"]',
+                '[class*="company"]',
+                '[class*="Company"]',
+                '[data-testid*="company"]',
+            ]:
+                el = card.select_one(sel)
+                if el:
+                    candidate = clean(el.get_text(" ", strip=True))
+                    if candidate and normalize_key_text(candidate) != normalize_key_text(title):
+                        if valid_company(candidate, "search_card"):
+                            company = candidate
+                            break
+
+        card_text = clean(card.get_text(" ", strip=True) if card else "")
+        location = ""
+        m = re.search(
+            r"\b(Praha(?:\s*\+\s*\d+\s*další)?|Prague|Remote|Hybrid)\b",
+            card_text,
+            re.I,
+        )
+        if m:
+            location = clean(m.group(1))
+
+        seen.add(jid)
+        jobs.append({
+            "source": "startupjobs.cz",
+            "job_id": jid,
+            "title": title,
+            "actual_title": title,
+            "url": href,
+            "company": company,
+            "company_source": "search_card" if company else "",
+            "location": location,
+            "description": "",
+            "card_text": card_text,
+            "search_query": query,
+            "discovery_only": True,
+        })
+    return jobs
+
+
+def parse_indeed_search(html, query):
+    soup = BeautifulSoup(html, "html.parser")
+    jobs, seen = [], set()
+
+    selectors = [
+        "h2.jobTitle a[href]",
+        "a.jcs-JobTitle[href]",
+        "a[data-jk][href]",
+        'a[href*="/rc/clk"][href*="jk="]',
+        'a[href*="/viewjob"][href*="jk="]',
+        'a[href*="/pagead/clk"][href*="jk="]',
+    ]
+    anchors = []
+    for sel in selectors:
+        anchors.extend(soup.select(sel))
+
+    for a in anchors:
+        raw_href = a.get("href", "")
+        data_jk = clean(a.get("data-jk", ""))
+        href = urljoin(INDEED_BASE, raw_href)
+        jid = data_jk or indeed_job_id_from_url(href)
+        if not jid or jid in seen:
+            continue
+
+        # Use a stable Indeed detail URL instead of the transient rc/clk link.
+        detail_url = f"{INDEED_BASE}/viewjob?jk={quote(jid)}"
+
+        title = clean(a.get_text(" ", strip=True))
+        title_span = a.select_one("span[title]")
+        if title_span and title_span.get("title"):
+            title = clean(title_span.get("title"))
+        if not title:
+            continue
+
+        card = (
+            a.find_parent("div", class_=re.compile(r"job_seen_beacon", re.I))
+            or a.find_parent("div", class_=re.compile(r"cardOutline", re.I))
+            or _card_for_anchor(a)
+        )
+        card_text = clean(card.get_text(" ", strip=True) if card else "")
+
+        company = ""
+        location = ""
+        if card:
+            for sel in [
+                '[data-testid="company-name"]',
+                ".companyName",
+                '[class*="companyName"]',
+            ]:
+                el = card.select_one(sel)
+                if el:
+                    candidate = clean(el.get_text(" ", strip=True))
+                    if valid_company(candidate, "search_card"):
+                        company = candidate
+                        break
+            for sel in [
+                '[data-testid="text-location"]',
+                ".companyLocation",
+                '[class*="companyLocation"]',
+            ]:
+                el = card.select_one(sel)
+                if el:
+                    location = clean(el.get_text(" ", strip=True))
+                    if location:
+                        break
+
+        seen.add(jid)
+        jobs.append({
+            "source": "indeed.cz",
+            "job_id": jid,
+            "title": title,
+            "actual_title": title,
+            "url": detail_url,
+            "company": company,
+            "company_source": "search_card" if company else "",
+            "location": location,
+            "description": "",
+            "card_text": card_text,
+            "search_query": query,
+            "discovery_only": True,
+        })
+    return jobs
+
+
+def discovery_headers():
+    return {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/154.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "cs-CZ,cs;q=0.9,en;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+
+def discover_startupjobs_cz(session):
+    if not SOURCE_STARTUPJOBS_CZ:
+        return []
+
+    jobs, seen = [], set()
+    for query, route in STARTUPJOBS_SEARCH_ROUTES:
+        url = urljoin(STARTUPJOBS_BASE, route)
+        try:
+            r = session.get(url, timeout=20, headers=discovery_headers())
+            r.raise_for_status()
+            for job in parse_startupjobs_search(r.text, query):
+                key = history_key(job)
+                if key in seen:
+                    continue
+                seen.add(key)
+                jobs.append(job)
+        except Exception as exc:
+            print(f"⚠️ StartupJobs.cz search failed for '{query}': {exc}")
+
+    jobs.sort(key=discovery_priority, reverse=True)
+    return jobs[:MAX_DISCOVERY_PER_SOURCE]
+
+
+def discover_indeed_cz(session):
+    if not SOURCE_INDEED_CZ:
+        return []
+
+    jobs, seen = [], set()
+    for query in INDEED_SEARCH_QUERIES:
+        params = urlencode({
+            "q": query,
+            "l": "Praha",
+            "radius": "25",
+            "sort": "date",
+        })
+        url = f"{INDEED_BASE}/jobs?{params}"
+        try:
+            r = session.get(url, timeout=20, headers=discovery_headers())
+            r.raise_for_status()
+            for job in parse_indeed_search(r.text, query):
+                key = history_key(job)
+                if key in seen:
+                    continue
+                seen.add(key)
+                jobs.append(job)
+        except Exception as exc:
+            print(f"⚠️ Indeed.cz search failed for '{query}': {exc}")
+
+    jobs.sort(key=discovery_priority, reverse=True)
+    return jobs[:MAX_DISCOVERY_PER_SOURCE]
+
+
+async def browser_discovery_fallback(specs, parser, source_name):
+    """
+    Read-only fallback when a public search page returns no parsable jobs over
+    plain HTTP. No application controls are clicked and no form fields are used.
+    """
+    recovered, seen = [], set()
+    if not specs:
+        return recovered
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                viewport={"width": 1440, "height": 1000},
+                locale="cs-CZ",
+            )
+            page = await context.new_page()
+            for query, url in specs:
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    await page.wait_for_timeout(1800)
+                    html = await page.content()
+                    for job in parser(html, query):
+                        key = history_key(job)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        recovered.append(job)
+                except Exception as exc:
+                    print(f"⚠️ {source_name} browser discovery failed for '{query}': {exc}")
+            await context.close()
+            await browser.close()
+    except Exception as exc:
+        print(f"⚠️ {source_name} browser discovery unavailable: {exc}")
+
+    recovered.sort(key=discovery_priority, reverse=True)
+    return recovered[:MAX_DISCOVERY_PER_SOURCE]
+
+
 def discover_jobs_cz(session):
     if not SOURCE_JOBS_CZ:
         return []
@@ -1544,25 +1875,60 @@ def discover_prace_cz(session):
     jobs.sort(key=discovery_priority, reverse=True)
     return jobs[:MAX_DISCOVERY_PER_SOURCE]
 
-def interleave_sources(a, b):
+def interleave_sources(*groups):
     out = []
-    max_len = max(len(a), len(b)) if (a or b) else 0
+    max_len = max((len(g) for g in groups), default=0)
     for i in range(max_len):
-        if i < len(a):
-            out.append(a[i])
-        if i < len(b):
-            out.append(b[i])
+        for group in groups:
+            if i < len(group):
+                out.append(group[i])
     return out
 
 
-def discover_all(session):
+async def discover_all(session):
     jobs_cz = discover_jobs_cz(session)
     prace_cz = discover_prace_cz(session)
+    startupjobs_cz = discover_startupjobs_cz(session)
+    indeed_cz = discover_indeed_cz(session)
+
+    if SOURCE_STARTUPJOBS_CZ and not startupjobs_cz:
+        specs = [
+            (query, urljoin(STARTUPJOBS_BASE, route))
+            for query, route in STARTUPJOBS_SEARCH_ROUTES
+        ]
+        startupjobs_cz = await browser_discovery_fallback(
+            specs,
+            parse_startupjobs_search,
+            "StartupJobs.cz",
+        )
+
+    if SOURCE_INDEED_CZ and not indeed_cz:
+        specs = []
+        for query in INDEED_SEARCH_QUERIES:
+            params = urlencode({
+                "q": query,
+                "l": "Praha",
+                "radius": "25",
+                "sort": "date",
+            })
+            specs.append((query, f"{INDEED_BASE}/jobs?{params}"))
+        indeed_cz = await browser_discovery_fallback(
+            specs,
+            parse_indeed_search,
+            "Indeed.cz",
+        )
 
     print(f"🔎 Jobs.cz discovery: {len(jobs_cz)} candidate(s)")
     print(f"🔎 Prace.cz discovery: {len(prace_cz)} candidate(s)")
+    print(f"🔎 StartupJobs.cz discovery: {len(startupjobs_cz)} candidate(s)")
+    print(f"🔎 Indeed.cz discovery: {len(indeed_cz)} candidate(s)")
 
-    merged = interleave_sources(jobs_cz, prace_cz)
+    merged = interleave_sources(
+        jobs_cz,
+        prace_cz,
+        startupjobs_cz,
+        indeed_cz,
+    )
 
     # Exact source/url duplicate guard. Semantic company/title dedupe happens
     # after enrichment in main().
@@ -6447,6 +6813,14 @@ async def prepare_single_job(job):
         f"{target.get('actual_title') or target.get('title')}"
     )
 
+    if not application_source_supported(target):
+        reason = (
+            f"Prepare now is not enabled for discovery-only source "
+            f"{target.get('source')}. Open the vacancy and apply manually."
+        )
+        print(f"🛑 {reason}")
+        return "DISCOVERY_ONLY", reason, target.get("url", ""), {}
+
     canonical_id = canonical_history_key(target)
     processed = load_processed()
     if canonical_id in processed:
@@ -6531,7 +6905,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v52 — broader data-role discovery")
+    print("🚀 Starting Job Agent v2.7 — four-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
@@ -6579,7 +6953,13 @@ async def main():
         f"wait_ms={MICROSITE_CTA_WAIT_MS} | "
         f"same_host_reply_fallback={ALLOW_SAME_HOST_REPLY_FALLBACK}"
     )
-    print(f"🌐 Sources: Jobs.cz={SOURCE_JOBS_CZ} | Prace.cz={SOURCE_PRACE_CZ}")
+    print(
+        "🌐 Sources: "
+        f"Jobs.cz={SOURCE_JOBS_CZ} | "
+        f"Prace.cz={SOURCE_PRACE_CZ} | "
+        f"StartupJobs.cz={SOURCE_STARTUPJOBS_CZ} | "
+        f"Indeed.cz={SOURCE_INDEED_CZ}"
+    )
     print(
         f"📍 Location gate: mode={LOCATION_MODE} | "
         f"remote_outside_prague={ALLOW_FULL_REMOTE_OUTSIDE_PRAGUE}"
@@ -6592,7 +6972,7 @@ async def main():
     print(f"🗂️ Previously processed: {len(processed)} job(s)")
 
     session = requests.Session()
-    jobs = discover_all(session)
+    jobs = await discover_all(session)
     print(f"🔗 Combined discovery before enrichment/dedup: {len(jobs)} candidate(s)")
 
     print("\n🔍 DISCOVERY PRIORITY PREVIEW")
@@ -6701,6 +7081,12 @@ async def main():
             job.setdefault("reasons", []).append("desktop_override:REVIEW")
         elif override_decision == "INTERESTING":
             job.setdefault("reasons", []).append("desktop_override:INTERESTING")
+
+        if not application_source_supported(job) and job.get("decision") == "APPLY":
+            job["decision"] = "REVIEW"
+            job.setdefault("reasons", []).append(
+                f"discovery_only_source:{job.get('source')}"
+            )
 
         ranked.append(job)
 
