@@ -7299,7 +7299,7 @@ async def main():
         )
 
     if not apply_candidates:
-        print("\n❌ No target role currently qualifies for APPLY.")
+        print("\n❌ No vacancy currently qualifies for APPLY.")
         return
 
     queue = apply_candidates[:MAX_APPLICATIONS_PER_RUN]
