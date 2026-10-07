@@ -278,6 +278,41 @@ def normalize_key_text(text):
     return clean(text)
 
 
+def valid_job_title(title):
+    """Reject portal/navigation headings that are not actual vacancy titles."""
+    title = clean(title)
+    if not title:
+        return False
+
+    norm = normalize_key_text(title)
+    if not norm:
+        return False
+
+    generic = {
+        "detail pozice",
+        "detail pracovni pozice",
+        "detail nabidky",
+        "detail pracovni nabidky",
+        "pracovni nabidka",
+        "nabidka prace",
+        "volna pozice",
+        "volne misto",
+        "job detail",
+        "position detail",
+        "job offer",
+        "vacancy detail",
+    }
+    if norm in generic:
+        return False
+
+    if norm.startswith("detail pozice "):
+        return False
+    if norm.startswith("detail nabidky "):
+        return False
+
+    return len(title) >= 3
+
+
 def source_from_url(url):
     low = (url or "").lower()
     if "startupjobs.cz" in low:
@@ -951,13 +986,22 @@ def enrich_job(job, session):
         structured = jsonld_jobposting(soup)
 
         h1 = soup.find("h1")
-        if h1:
-            job["actual_title"] = clean(h1.get_text(" ", strip=True))
+        h1_title = clean(h1.get_text(" ", strip=True)) if h1 else ""
+        structured_title = (
+            clean(str(structured.get("title")))
+            if structured and structured.get("title")
+            else ""
+        )
+
+        # Preserve the search-card title when the detail page exposes a generic
+        # portal heading such as "Detail pozice". Prefer structured JobPosting
+        # title, then a validated H1.
+        if valid_job_title(structured_title):
+            job["actual_title"] = structured_title
+        elif valid_job_title(h1_title):
+            job["actual_title"] = h1_title
 
         if structured:
-            if structured.get("title") and not job.get("actual_title"):
-                job["actual_title"] = clean(str(structured.get("title")))
-
             org = structured.get("hiringOrganization")
             if isinstance(org, dict) and org.get("name") and not job.get("company"):
                 job["company"] = clean(str(org.get("name")))
@@ -2311,16 +2355,19 @@ def merge_browser_evidence(
     soup = BeautifulSoup(rendered_html or "", "html.parser")
     structured = jsonld_jobposting(soup)
 
-    # Rendered title.
+    # Rendered title. Keep the search-card title if the page only exposes
+    # a generic portal heading such as "Detail pozice".
     h1 = soup.find("h1")
-    if h1:
-        rendered_title = clean(h1.get_text(" ", strip=True))
-        if rendered_title:
-            job["actual_title"] = rendered_title
-    elif structured and structured.get("title"):
-        rendered_title = clean(str(structured.get("title")))
-        if rendered_title:
-            job["actual_title"] = rendered_title
+    h1_title = clean(h1.get_text(" ", strip=True)) if h1 else ""
+    structured_title = (
+        clean(str(structured.get("title")))
+        if structured and structured.get("title")
+        else ""
+    )
+    if valid_job_title(structured_title):
+        job["actual_title"] = structured_title
+    elif valid_job_title(h1_title):
+        job["actual_title"] = h1_title
 
     # Rendered/structured company.
     if browser_company:
