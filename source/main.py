@@ -7109,8 +7109,8 @@ async def main():
     enriched = await browser_recover_weak_evidence(enriched)
 
     # Cross-site semantic dedup: same normalized employer + title + location.
-    # Prefer Jobs.cz when the same vacancy appears on both portals because its
-    # adapter is more mature; otherwise keep the higher-evidence record.
+    # Keep the strongest evidence first; when evidence is equal, prefer
+    # Jobs.cz because its application adapter is more mature.
     groups = {}
     for job in enriched:
         key = dedupe_key(job)
@@ -7124,8 +7124,10 @@ async def main():
 
         group.sort(
             key=lambda j: (
+                {"strong": 0, "medium": 1, "weak": 2}.get(
+                    j.get("evidence_quality"), 3
+                ),
                 j.get("source") != "jobs.cz",
-                {"strong": 0, "medium": 1, "weak": 2}.get(j.get("evidence_quality"), 3),
             )
         )
         keep = group[0]
