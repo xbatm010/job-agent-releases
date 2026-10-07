@@ -41,17 +41,17 @@ LOGIN_WAIT_SECONDS = int(os.getenv("LOGIN_WAIT_SECONDS", "240"))
 MANUAL_CV_FALLBACK = os.getenv("MANUAL_CV_FALLBACK", "true").lower() == "true"
 MANUAL_CV_WAIT_SECONDS = int(os.getenv("MANUAL_CV_WAIT_SECONDS", "180"))
 APPLICATION_DEBUG = os.getenv("APPLICATION_DEBUG", "true").lower() == "true"
-MIN_APPLY_SCORE = int(os.getenv("MIN_APPLY_SCORE", "73"))
-ENTRY_APPLY_SCORE = int(os.getenv("ENTRY_APPLY_SCORE", "68"))
-EXPANDED_APPLY_SCORE = int(os.getenv("EXPANDED_APPLY_SCORE", "74"))
-EXPANDED_REVIEW_SCORE = int(os.getenv("EXPANDED_REVIEW_SCORE", "62"))
+MIN_APPLY_SCORE = int(os.getenv("MIN_APPLY_SCORE", "66"))
+ENTRY_APPLY_SCORE = int(os.getenv("ENTRY_APPLY_SCORE", "62"))
+EXPANDED_APPLY_SCORE = int(os.getenv("EXPANDED_APPLY_SCORE", "70"))
+EXPANDED_REVIEW_SCORE = int(os.getenv("EXPANDED_REVIEW_SCORE", "58"))
 EXPANDED_MIN_DATA_SIGNALS = int(os.getenv(
     "EXPANDED_MIN_DATA_SIGNALS", "3"
 ))
 EXPANDED_MIN_CANDIDATE_FIT = int(os.getenv(
     "EXPANDED_MIN_CANDIDATE_FIT", "12"
 ))
-VERIFIED_TARGET_APPLY_SCORE = int(os.getenv("VERIFIED_TARGET_APPLY_SCORE", "70"))
+VERIFIED_TARGET_APPLY_SCORE = int(os.getenv("VERIFIED_TARGET_APPLY_SCORE", "64"))
 VERIFIED_TARGET_MIN_CANDIDATE_FIT = int(os.getenv(
     "VERIFIED_TARGET_MIN_CANDIDATE_FIT", "10"
 ))
@@ -67,6 +67,9 @@ MAX_BROWSER_EVIDENCE_JOBS = int(os.getenv(
 ))
 BROWSER_EVIDENCE_WAIT_MS = int(os.getenv(
     "BROWSER_EVIDENCE_WAIT_MS", "1800"
+))
+BROWSER_DISCOVERY_RELOAD_LIMIT = int(os.getenv(
+    "BROWSER_DISCOVERY_RELOAD_LIMIT", "5"
 ))
 BROWSER_EVIDENCE_LEVELS = {
     x.strip().lower() for x in os.getenv(
@@ -94,7 +97,7 @@ MICROSITE_CTA_RETRIES = int(os.getenv(
 ALLOW_SAME_HOST_REPLY_FALLBACK = os.getenv(
     "ALLOW_SAME_HOST_REPLY_FALLBACK", "true"
 ).lower() == "true"
-MIN_REVIEW_SCORE = int(os.getenv("MIN_REVIEW_SCORE", "60"))
+MIN_REVIEW_SCORE = int(os.getenv("MIN_REVIEW_SCORE", "55"))
 MANUAL_REVIEW_APPLY_MIN_SCORE = int(os.getenv("MANUAL_REVIEW_APPLY_MIN_SCORE", "65"))
 MAX_DISCOVERY_ITEMS = int(os.getenv("MAX_DISCOVERY_ITEMS", "30"))
 MAX_JOBS_TO_REVIEW = int(os.getenv("MAX_JOBS_TO_REVIEW", "10"))
@@ -141,6 +144,10 @@ INDEED_SEARCH_QUERIES = [
     "Reporting Analyst",
     "Business Data Analyst",
     "Data Specialist",
+    "Data Analytics Internship",
+    "Analytics Intern",
+    "AI Trainee",
+    "Automation Trainee",
 ]
 
 PRACE_SEARCH_ROUTES = [
@@ -167,6 +174,12 @@ SEARCH_QUERIES = [
     "Reporting Analyst",
     "BI Analyst",
     "Data Reporting Analyst",
+    "Data Analytics Internship",
+    "Data Analyst Internship",
+    "Analytics Intern",
+    "BI Internship",
+    "AI Trainee",
+    "Automation Trainee",
 
     # Broader discovery only; strict full-description gates apply later.
     "Data Specialist",
@@ -230,6 +243,8 @@ TARGET_TITLE_PATTERNS = [
     r"\bsales data analyst\b",
     r"\bmarketing data analyst\b",
     r"\bcustomer data\b.*\banalyst\b",
+    r"\bdata\s+analytics?\s+(?:intern(?:ship)?|trainee|student)\b",
+    r"\b(?:intern(?:ship)?|trainee|student).*data\s+analytics?\b",
 ]
 
 EXPANDED_TITLE_PATTERNS = [
@@ -251,6 +266,11 @@ EXPANDED_TITLE_PATTERNS = [
     r"\bcrm\s+analyt",
     r"\bdata\s+governance\s+(?:analyst|specialist)\b",
     r"\bdata\s+coordinator\b",
+    r"\bai\b.*\b(?:trainee|intern(?:ship)?|student|support)\b",
+    r"\b(?:trainee|intern(?:ship)?|student|support)\b.*\bai\b",
+    r"\bautomation\b.*\b(?:trainee|intern(?:ship)?|student|support)\b",
+    r"\b(?:trainee|intern(?:ship)?|student|support)\b.*\bautomation\b",
+    r"\bcloud\b.*\bdata\s+analytics\b",
 ]
 
 ADJACENT_TITLE_PATTERNS = [
@@ -1224,13 +1244,15 @@ def score_job(job):
 
     rc = role_class(title)
     evidence = job.get("evidence_quality", "weak")
+    evidence_verified = evidence == "strong"
 
     if rc == "excluded":
         return {
             "score": 0, "decision": "SKIP", "role_fit": 0,
             "candidate_fit": 0, "experience_fit": 0,
             "language_fit": 0, "location_fit": 0,
-            "confidence": "high", "reasons": ["excluded seniority"],
+            "confidence": "high", "evidence_verified": evidence_verified,
+            "reasons": ["excluded seniority"],
         }
 
     role_fit = (
@@ -1387,6 +1409,7 @@ def score_job(job):
         f"language_fit={language_fit}",
         f"location_fit={location_fit}",
         f"evidence={evidence}",
+        f"evidence_verified={evidence_verified}",
         f"confidence={confidence}",
         f"entry_role={entry_signal}",
         f"soft_experience_penalty={soft_exp_penalty}",
@@ -1413,6 +1436,7 @@ def score_job(job):
         "language_fit": language_fit,
         "location_fit": location_fit,
         "confidence": confidence,
+        "evidence_verified": evidence_verified,
         "matched": matched,
         "gaps": gaps,
         "hard_experience": hard_experience,
@@ -1939,7 +1963,20 @@ async def browser_discovery_fallback(
                 )
                 page = await context.new_page()
 
+            navigation_events = 0
+
+            def _record_main_navigation(frame):
+                nonlocal navigation_events
+                try:
+                    if frame == page.main_frame:
+                        navigation_events += 1
+                except Exception:
+                    pass
+
+            page.on("framenavigated", _record_main_navigation)
+
             for query, url in specs:
+                nav_before = navigation_events
                 try:
                     await page.goto(
                         url,
@@ -1948,6 +1985,33 @@ async def browser_discovery_fallback(
                     )
                     await page.wait_for_timeout(2200)
                     html = await page.content()
+
+                    visible = ""
+                    try:
+                        body = page.locator("body").first
+                        if await body.count():
+                            visible = clean(await body.inner_text(timeout=1500))
+                    except Exception:
+                        pass
+
+                    nav_delta = max(0, navigation_events - nav_before)
+                    block_reason = browser_discovery_block_reason(
+                        html,
+                        visible,
+                        nav_delta,
+                    )
+                    if block_reason:
+                        print(
+                            f"🛡️ {source_name} {block_reason} detected for "
+                            f"'{query}'; skipping this source for the current run."
+                        )
+                        if source_name.lower().startswith("indeed"):
+                            print(
+                                "   Indeed requires manual human verification; "
+                                "Job Agent will not retry or bypass the challenge."
+                            )
+                        break
+
                     for job in parser(html, query):
                         key = history_key(job)
                         if key in seen:
@@ -1955,6 +2019,16 @@ async def browser_discovery_fallback(
                         seen.add(key)
                         recovered.append(job)
                 except Exception as exc:
+                    message = str(exc).lower()
+                    if (
+                        source_name.lower().startswith("indeed")
+                        and ("navigat" in message or "execution context" in message)
+                    ):
+                        print(
+                            "🛡️ Indeed.cz navigation/reload loop detected; "
+                            "skipping Indeed for the current run."
+                        )
+                        break
                     print(
                         f"⚠️ {source_name} browser discovery failed for "
                         f"'{query}': {type(exc).__name__}"
@@ -2420,8 +2494,27 @@ def is_access_challenge_page(rendered_html="", rendered_text=""):
         "request blocked",
         "your request has been blocked",
         "checking your browser",
+        "additional verification required",
+        "please verify your identity",
+        "verify your identity",
+        "press and hold",
+        "please complete the security check",
+        "just a moment",
     ]
     return any(marker in combined for marker in markers)
+
+
+def browser_discovery_block_reason(
+    rendered_html="",
+    rendered_text="",
+    navigation_events=0,
+):
+    """Return a safe stop reason for CAPTCHA/challenge or reload loops."""
+    if is_access_challenge_page(rendered_html, rendered_text):
+        return "CAPTCHA/security challenge"
+    if navigation_events >= BROWSER_DISCOVERY_RELOAD_LIMIT:
+        return f"reload loop ({navigation_events} navigations)"
+    return ""
 
 
 def merge_browser_evidence(
@@ -7148,7 +7241,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.7.2 — four-source data-role discovery")
+    print("🚀 Starting Job Agent v2.7.3 — four-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
@@ -7350,7 +7443,8 @@ async def main():
             f"{job.get('role_class')} | {job.get('decision')} | "
             f"{job.get('score')}/100 | "
             f"evidence={job.get('evidence_quality')}/{job.get('evidence_source', 'http')} | "
-            f"verified={'YES' if job.get('verified_target_promotion') else 'NO'} | "
+            f"verified={'YES' if job.get('evidence_verified') else 'NO'} | "
+            f"promotion={'YES' if job.get('verified_target_promotion') else 'NO'} | "
             f"expanded_signals={','.join(job.get('expanded_signals', [])) if job.get('expanded_signals') else '-'}"
         )
 
