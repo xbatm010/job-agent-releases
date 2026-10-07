@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.8.1",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.8.1/job-agent-2.8.1-macos.zip",
-      "sha256": "a7f660e1bf395d210fb31ffb2fc12e13d55144fc3e11c805af9d0aded480846e",
-      "notes": "Desktop 2.8.1 is a full audit/polish release after the three-source migration. It corrects the Desktop header from 4 sources to 3, removes the retired source_indeed setting from existing local profiles, hides legacy Indeed vacancy/history records from Dashboard, updates source documentation, aligns runtime discovery defaults with Desktop/.env (80 per source, 12 browser-evidence jobs, 36 jobs reviewed), aligns MANUAL_CV_FALLBACK=true, removes the unused MAX_DISCOVERY_ITEMS setting, preserves real vacancy titles when detail pages expose generic headings such as 'Detail pozice', fixes cross-site dedupe priority to prefer application-capable sources then stronger evidence then Jobs.cz, and makes the Dashboard manual-queue filter follow the configured threshold instead of the stale 65–72 range. Beta GitHub releases are now marked as prereleases. Indeed remains intentionally outside Job Agent automation; only migration cleanup references remain. Manual final Submit safety is unchanged.",
+      "version": "2.8.2",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.8.2/job-agent-2.8.2-macos.zip",
+      "sha256": "e25c664a1882f25eccedd280cd17369a200506ab41f0e12d37dd92d5ad5300cf",
+      "notes": "Desktop 2.8.2 fixes entry expanded-role eligibility. Explicit Junior/Student/Intern/Trainee/Graduate titles use a candidate skills-fit floor of 10; regular expanded roles retain 12. The expanded APPLY score stays 70, with strong evidence, independent data signals, experience and location checks still required. A synthetic regression matching the logged Junior Data & Credit Reporting Specialist shape (76/100, five signals, skills fit 10) now reaches APPLY; the regular title remains REVIEW. Ranking logs and Dashboard details show skills fit, the applicable floor and failed automatic APPLY checks. Local vacancy snapshots preserve the diagnostics and CSV reasons retain full scoring/location explanations. The release pipeline runs 16 offline regression tests before building and preserves test sources. Jobs.cz, Prace.cz and StartupJobs.cz discovery, duplicate-submission protection and manual final Submit in Desktop are unchanged.",
       "min_version": "2.3.1"
     }
   }
