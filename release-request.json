@@ -1,10 +1,12 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 14,
   "version": "2.6.1",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Desktop 2.6.1 fixes clipped and overlapping text in the narrow left settings panel. Search/Profile/Scoring forms now wrap long rows adaptively, Search checkbox labels are shorter while preserving full explanations in tooltips, and the window width remains compact. Branding from 2.6.0, duplicate-application protection, and manual final Submit safety remain unchanged."
+  "notes": "Desktop 2.6.1 fixes clipped and overlapping text in the narrow left settings panel. Search/Profile/Scoring forms now wrap long rows adaptively, Search checkbox labels are shorter while preserving full explanations in tooltips, and the window width remains compact. Branding from 2.6.0, duplicate-application protection, and manual final Submit safety remain unchanged.",
+  "last_published": "2.6.1",
+  "last_sha256": "a08e2574dac25fdac2bb5b3954f6de77067d117669c50e0e32bdf04bf91b1a17"
 }

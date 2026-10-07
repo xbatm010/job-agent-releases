@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.6.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.6.0/job-agent-2.6.0-macos.zip",
-      "sha256": "f1050112d4e3042261a8a977cd9cfb1fd45cf67774966062710784f356257a0b",
-      "notes": "Desktop 2.6.0 introduces the new Job Agent visual identity: a dark-navy app icon with a blue briefcase, teal checkmark and orange search magnifier. The icon is now used by the macOS .app/Dock and inside the Desktop header and Updates screen. GitHub Actions renders the bundled SVG into PNG and ICNS assets during release builds. Responsive layout, duplicate-application protection and manual final Submit safety remain unchanged.",
+      "version": "2.6.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.6.1/job-agent-2.6.1-macos.zip",
+      "sha256": "a08e2574dac25fdac2bb5b3954f6de77067d117669c50e0e32bdf04bf91b1a17",
+      "notes": "Desktop 2.6.1 fixes clipped and overlapping text in the narrow left settings panel. Search/Profile/Scoring forms now wrap long rows adaptively, Search checkbox labels are shorter while preserving full explanations in tooltips, and the window width remains compact. Branding from 2.6.0, duplicate-application protection, and manual final Submit safety remain unchanged.",
       "min_version": "2.3.1"
     }
   }
