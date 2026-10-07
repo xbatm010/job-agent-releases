@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 18,
   "version": "2.7.3",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Desktop 2.7.3 improves first-job discovery and handles Indeed anti-bot challenges safely. Default scoring is recalibrated to target APPLY 66, verified target promotion 64, entry APPLY 62, expanded APPLY 70, expanded REVIEW 58 and REVIEW 55; untouched v2.7.2 Desktop defaults migrate automatically while custom thresholds are preserved. Data Analytics internships and selected AI/automation trainee/student roles are now discovered and can qualify only when strong vacancy evidence and concrete data-skill signals support them. Ranking logs now distinguish strong evidence verification from near-threshold promotion. Indeed Chromium discovery detects CAPTCHA/security pages and repeated navigation/reload loops, stops retries for the run, and never attempts to bypass human verification. StartupJobs.cz and Indeed.cz remain discovery-only, and final employer Submit remains manual.",
-  "last_published": "2.7.2",
-  "last_sha256": "b71dcf052c2aa711cc1081c6f68b05c4000ecde1615170878d5cb2b7b3cb6996"
+  "last_published": "2.7.3",
+  "last_sha256": "bb5a4888fe68f8826cbc86f38c11c2de9be254b2af0aa760c506c3dad9f43169"
 }
