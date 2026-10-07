@@ -842,6 +842,12 @@ def valid_company(name, source="generic"):
     if len(low) > 140 or len(low) < 2:
         return False
 
+    # Metadata can contain slogans or clipped teaser fragments that are not
+    # employer names (for example "...kde jinde."). Reject ellipsis-wrapped
+    # fragments before any looser brand-name heuristics.
+    if name.startswith("...") or name.endswith("...") or "…" in name:
+        return False
+
     bad = [
         "pracovní nabídka", "volná místa", "o nás",
         "podívejte se na profil firmy", "company profile",
@@ -850,6 +856,7 @@ def valid_company(name, source="generic"):
         "profil firmy", "learn more", "read more", "show more",
         "jobs.cz", "prace.cz", "jobs cz", "prace cz",
         "nabídky práce", "nabidky prace", "job offers",
+        "kde jinde", "práce kde jinde", "prace kde jinde",
     ]
     if any(x in low for x in bad):
         return False
@@ -6737,7 +6744,7 @@ async def hold_for_manual_final_submit(page, result):
     print("\n✅ APPLICATION IS FULLY READY")
     print("   Review the visible application form one last time.")
     print("   If everything is correct, click the orange Submit button yourself.")
-    print("   v51 will detect the confirmation automatically.")
+    print("   Job Agent will detect the confirmation automatically.")
     print(f"   Waiting up to {MANUAL_SUBMIT_WAIT_SECONDS} seconds...")
 
     original_url = page.url
@@ -7244,7 +7251,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.7.4 — four-source data-role discovery")
+    print("🚀 Starting Job Agent v2.7.5 — four-source data-role discovery")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
