@@ -81,10 +81,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.5.0", "channel": "stable"}
+        return {"app_name": "Job Agent Desktop", "version": "2.5.1", "channel": "stable"}
 
 VERSION_INFO = None
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.5.1"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -190,6 +190,64 @@ def save_settings(data: dict) -> None:
     )
 
 
+def canonical_local_job_id(job_id: str, url: str = "") -> str:
+    raw = str(job_id or "").strip()
+    if raw.startswith("job:") and raw[4:].isdigit():
+        return raw
+    if raw.isdigit():
+        return f"job:{raw}"
+
+    for prefix in ("jobs.cz:", "prace.cz:"):
+        if raw.lower().startswith(prefix):
+            suffix = raw[len(prefix):]
+            if suffix.isdigit():
+                return f"job:{suffix}"
+
+    low_url = str(url or "")
+    for marker in ("/rpd/", "/pd/", "/job/", "/jobs/", "/pozice/", "/position/"):
+        pos = low_url.lower().find(marker)
+        if pos >= 0:
+            rest = low_url[pos + len(marker):]
+            digits = ""
+            for ch in rest:
+                if ch.isdigit():
+                    digits += ch
+                else:
+                    break
+            if digits:
+                return f"job:{digits}"
+
+    return raw
+
+
+def terminal_job_ids() -> set[str]:
+    out = set()
+    if not HISTORY_FILE.exists():
+        return out
+    try:
+        with HISTORY_FILE.open("r", encoding="utf-8", newline="") as fh:
+            for row in csv.DictReader(fh):
+                if str(row.get("status", "")).upper() not in TERMINAL_STATUSES:
+                    continue
+                key = canonical_local_job_id(
+                    row.get("job_id", ""),
+                    row.get("url", ""),
+                )
+                if key:
+                    out.add(key)
+    except Exception:
+        pass
+    return out
+
+
+def vacancy_already_submitted(record: dict) -> bool:
+    key = canonical_local_job_id(
+        record.get("job_id", ""),
+        record.get("url", ""),
+    )
+    return bool(key and key in terminal_job_ids())
+
+
 def processed_count() -> int:
     if not HISTORY_FILE.exists():
         return 0
@@ -200,7 +258,10 @@ def processed_count() -> int:
             for row in csv.DictReader(fh):
                 if row.get("status") not in TERMINAL_STATUSES:
                     continue
-                jid = (row.get("job_id") or "").strip()
+                jid = canonical_local_job_id(
+                    row.get("job_id", ""),
+                    row.get("url", ""),
+                )
                 if jid:
                     unique.add(jid)
     except Exception:
@@ -222,8 +283,12 @@ def load_vacancy_records() -> list[dict]:
                         row = json.loads(raw)
                     except Exception:
                         continue
-                    jid = str(row.get("job_id", "")).strip()
+                    jid = canonical_local_job_id(
+                        row.get("job_id", ""),
+                        row.get("url", ""),
+                    )
                     if jid:
+                        row["job_id"] = jid
                         latest[jid] = row
         except Exception:
             pass
@@ -233,11 +298,16 @@ def load_vacancy_records() -> list[dict]:
         try:
             with HISTORY_FILE.open("r", encoding="utf-8", newline="") as fh:
                 for row in csv.DictReader(fh):
-                    jid = str(row.get("job_id", "")).strip()
+                    jid = canonical_local_job_id(
+                        row.get("job_id", ""),
+                        row.get("url", ""),
+                    )
                     if not jid:
                         continue
                     if jid not in latest:
-                        latest[jid] = dict(row)
+                        copied = dict(row)
+                        copied["job_id"] = jid
+                        latest[jid] = copied
         except Exception:
             pass
 
@@ -256,12 +326,20 @@ def load_job_overrides() -> dict:
         return {}
     try:
         data = json.loads(OVERRIDES_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        normalized = {}
+        for raw_key, value in data.items():
+            key = canonical_local_job_id(raw_key)
+            if key:
+                normalized[key] = value
+        return normalized
     except Exception:
         return {}
 
 
 def write_job_override(job_id: str, decision: str) -> None:
+    job_id = canonical_local_job_id(job_id)
     if not job_id:
         return
     OVERRIDES_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -277,6 +355,7 @@ def write_job_override(job_id: str, decision: str) -> None:
 
 
 def delete_job_override(job_id: str) -> bool:
+    job_id = canonical_local_job_id(job_id)
     if not job_id:
         return False
     data = load_job_overrides()
@@ -1080,6 +1159,16 @@ class JobAgentWindow(QMainWindow):
             if self._dashboard_record_matches_filters(record, overrides)
         ]
 
+        submitted_ids = terminal_job_ids()
+        for record in self.dashboard_all_records:
+            canonical = canonical_local_job_id(
+                record.get("job_id", ""),
+                record.get("url", ""),
+            )
+            if canonical in submitted_ids:
+                record["status"] = "SUBMITTED_MANUALLY"
+                record["decision"] = "APPLY"
+
         self.dashboard_table.setRowCount(len(self.dashboard_records))
         restore_row = -1
 
@@ -1227,11 +1316,12 @@ class JobAgentWindow(QMainWindow):
             return
 
         status = str(record.get("status", "")).upper().strip()
-        if status in TERMINAL_STATUSES:
+        if status in TERMINAL_STATUSES or vacancy_already_submitted(record):
             QMessageBox.information(
                 self,
                 "Prepare now",
-                "This vacancy is already recorded as submitted.",
+                "This vacancy already has a confirmed submission in local history. "
+                "Prepare now is blocked to prevent a duplicate application.",
             )
             return
 
