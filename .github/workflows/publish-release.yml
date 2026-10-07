@@ -207,6 +207,16 @@ jobs:
           low = dict(safe, score=64)
           assert not main.manual_review_apply_eligible(low, True)
 
+          card = main.BeautifulSoup(
+              '<article><h2>Data Analyst</h2>'
+              '<div class="company">Example Analytics s.r.o.</div></article>',
+              "html.parser",
+          ).article
+          assert main.extract_company_from_search_card(
+              card, "Data Analyst"
+          ) == "Example Analytics s.r.o."
+          print("Company extraction smoke test: OK")
+
           print("Dashboard persistence + manual queue safety smoke test: OK")
           PY
 
