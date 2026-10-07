@@ -401,6 +401,56 @@ jobs:
           assert protected["description"] == "Original search-card evidence"
           assert protected["evidence_source"] == "http"
           assert protected["browser_challenge_detected"] is True
+
+          assert main.browser_discovery_block_reason(
+              "<html><title>Additional Verification Required</title></html>",
+              "Please verify your identity",
+              1,
+          ) == "CAPTCHA/security challenge"
+          assert main.browser_discovery_block_reason(
+              "<html><title>Indeed Jobs</title></html>",
+              "Data Analyst jobs in Praha",
+              main.BROWSER_DISCOVERY_RELOAD_LIMIT,
+          ).startswith("reload loop")
+          print("Indeed CAPTCHA/reload-loop stop smoke test: OK")
+
+          entry_job = {
+              "source": "jobs.cz",
+              "job_id": "entry-v273",
+              "title": "Data Analytics Internship",
+              "actual_title": "Data Analytics Internship",
+              "location": "Praha",
+              "description": (
+                  "SQL PostgreSQL statistical analysis Excel reporting "
+                  "data visualization English Prague internship"
+              ),
+              "card_text": "",
+              "evidence_quality": "strong",
+          }
+          entry_score = main.score_job(entry_job)
+          assert entry_score["decision"] == "APPLY"
+          assert entry_score["evidence_verified"] is True
+
+          ai_entry_job = {
+              "source": "prace.cz",
+              "job_id": "ai-entry-v273",
+              "title": "AI & Automation Student Support (Part-time)",
+              "actual_title": "AI & Automation Student Support (Part-time)",
+              "location": "Praha",
+              "description": (
+                  "Student role focused on SQL, Excel, Power BI, Python, "
+                  "data analytics, reporting dashboards and databases in Prague."
+              ),
+              "card_text": "",
+              "evidence_quality": "strong",
+          }
+          ai_score = main.score_job(ai_entry_job)
+          assert ai_score["role_class"] if "role_class" in ai_score else True
+          assert main.role_class(ai_entry_job["title"]) == "expanded"
+          assert ai_score["expanded_role_eligible"] is True
+          assert ai_score["decision"] in {"APPLY", "REVIEW"}
+          print("v2.7.3 entry-role scoring smoke test: OK")
+
           print("Indeed challenge-page protection smoke test: OK")
 
           print("StartupJobs + Indeed discovery smoke test: OK")
