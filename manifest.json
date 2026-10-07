@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.7.5",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.5/job-agent-2.7.5-macos.zip",
-      "sha256": "44f497c908972831d36619738c818900c8dcd40591383428ed8ab3ca1b5d26d0",
-      "notes": "Desktop 2.7.5 is a small polish hotfix after successful 2.7.4 submissions. It rejects metadata slogan/teaser fragments such as '...kde jinde.' from company extraction so unknown employers remain unknown instead of being mislabeled, and replaces the legacy 'v51 will detect the confirmation automatically' log text with version-neutral wording. Scoring, source discovery, Indeed CAPTCHA handling, application preparation, manual final Submit safety and the v2.7.4 h1_text fix are unchanged.",
+      "version": "2.7.6",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.7.6/job-agent-2.7.6-macos.zip",
+      "sha256": "4cf423eaa41c5b983d2b07da1fc70d44cc0705a7e99ff06341d7e4307004330b",
+      "notes": "Desktop 2.7.6 improves adaptive CV attachment handling for Jobs.cz forms after a successful KPMG application required one manual CV-section reveal. The agent now recognizes additional compact custom upload controls (including span/summary, aria-expanded, upload/attachment/resume/cv classes), understands Czech actions such as Připojit/Vložit, and prefers the nearest semantic clickable ancestor before falling back to the text element itself. Large containers are ignored to avoid unsafe clicks. Legacy 'v32' CV log wording is replaced with version-neutral text. Scoring, Indeed CAPTCHA handling, duplicate protection, manual final Submit safety and all successful v2.7.5 behavior are unchanged.",
       "min_version": "2.3.1"
     }
   }

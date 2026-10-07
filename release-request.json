@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 21,
   "version": "2.7.6",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Desktop 2.7.6 improves adaptive CV attachment handling for Jobs.cz forms after a successful KPMG application required one manual CV-section reveal. The agent now recognizes additional compact custom upload controls (including span/summary, aria-expanded, upload/attachment/resume/cv classes), understands Czech actions such as Připojit/Vložit, and prefers the nearest semantic clickable ancestor before falling back to the text element itself. Large containers are ignored to avoid unsafe clicks. Legacy 'v32' CV log wording is replaced with version-neutral text. Scoring, Indeed CAPTCHA handling, duplicate protection, manual final Submit safety and all successful v2.7.5 behavior are unchanged.",
-  "last_published": "2.7.5",
-  "last_sha256": "44f497c908972831d36619738c818900c8dcd40591383428ed8ab3ca1b5d26d0"
+  "last_published": "2.7.6",
+  "last_sha256": "4cf423eaa41c5b983d2b07da1fc70d44cc0705a7e99ff06341d7e4307004330b"
 }
