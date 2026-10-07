@@ -2143,18 +2143,49 @@ async def browser_discovery_fallback(
                 page = await context.new_page()
 
             navigation_events = 0
+            navigation_listener_pages = set()
 
-            def _record_main_navigation(frame):
+            def attach_navigation_listener(target_page):
                 nonlocal navigation_events
+                if target_page is None:
+                    return
+                key = id(target_page)
+                if key in navigation_listener_pages:
+                    return
+                navigation_listener_pages.add(key)
+
+                def _record_main_navigation(frame, tracked=target_page):
+                    nonlocal navigation_events
+                    try:
+                        if frame == tracked.main_frame:
+                            navigation_events += 1
+                    except Exception:
+                        pass
+
                 try:
-                    if frame == page.main_frame:
-                        navigation_events += 1
+                    target_page.on("framenavigated", _record_main_navigation)
                 except Exception:
                     pass
 
-            page.on("framenavigated", _record_main_navigation)
+            attach_navigation_listener(page)
 
             for query, url in specs:
+                live_page = await recover_live_browser_page(
+                    context, page, wait_ms=0
+                )
+                if live_page is None:
+                    print(
+                        f"⚠️ {source_name}: Chromium window/session is closed; "
+                        "stopping browser discovery for this source."
+                    )
+                    break
+                if live_page is not page:
+                    page = live_page
+                    attach_navigation_listener(page)
+                    print(
+                        f"🔄 {source_name}: switched to a replacement browser tab."
+                    )
+
                 nav_before = navigation_events
                 try:
                     await page.goto(
@@ -2190,16 +2221,20 @@ async def browser_discovery_fallback(
                                 f"🛡️ {source_name} {block_reason} detected for "
                                 f"'{query}'."
                             )
-                            verified, html_after, _ = (
+                            verified, html_after, _, verified_page = (
                                 await wait_for_manual_access_challenge(
                                     page,
+                                    context,
                                     source_name,
                                     query,
                                     url,
                                 )
                             )
-                            if not verified:
+                            if not verified or verified_page is None:
                                 break
+                            if verified_page is not page:
+                                page = verified_page
+                                attach_navigation_listener(page)
                             html = html_after
                             # Reset the reload counter baseline after the user
                             # completes verification; challenge navigation should
@@ -2248,15 +2283,19 @@ async def browser_discovery_fallback(
                                     f"🛡️ {source_name} CAPTCHA/security "
                                     f"challenge detected for '{query}'."
                                 )
-                                verified, html_after, _ = (
+                                verified, html_after, _, verified_page = (
                                     await wait_for_manual_access_challenge(
                                         page,
+                                        context,
                                         source_name,
                                         query,
                                         url,
                                     )
                                 )
-                                if verified:
+                                if verified and verified_page is not None:
+                                    if verified_page is not page:
+                                        page = verified_page
+                                        attach_navigation_listener(page)
                                     for job in parser(html_after, query):
                                         key = history_key(job)
                                         if key in seen:
