@@ -1,4 +1,7 @@
 import csv
+import shutil
+import tempfile
+from datetime import datetime, timedelta
 from html import escape
 from desktop_theme import LIGHT_STYLE, DECISION_LABELS, display_decision
 from desktop_widgets import VacancyDelegate, VacancyDetail, icon_pixmap, ui_icon, SOURCE_NAMES
@@ -30,6 +33,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QInputDialog,
     QComboBox,
     QProgressBar,
     QMainWindow,
@@ -363,6 +367,107 @@ def processed_count() -> int:
     return len(unique)
 
 
+def parse_vacancy_saved_at(value):
+    """Return local naive timestamp, or None for old/invalid undated records."""
+    if not value:
+        return None
+    try:
+        date = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if date.tzinfo is not None:
+            date = date.astimezone().replace(tzinfo=None)
+        return date
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def protected_vacancy(record, overrides=None, submitted_ids=None):
+    """Never silently purge submitted, favorited or queued applications."""
+    jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+    override = (overrides or {}).get(jid, {})
+    decision = str(override.get("decision", "")).upper()
+    if jid in (submitted_ids or set()):
+        return True
+    if str(record.get("status", "")).upper() in TERMINAL_STATUSES:
+        return True
+    if decision in {"INTERESTING", "MANUAL_APPLY"} or bool(record.get("manual_queue")):
+        return True
+    return False
+
+
+def old_vacancy_ids(records, days, now=None, overrides=None, submitted_ids=None):
+    """Use the latest saved snapshot, not a guessed posting date."""
+    cutoff = (now or datetime.now()) - timedelta(days=int(days))
+    return {
+        canonical_local_job_id(row.get("job_id", ""), row.get("url", ""))
+        for row in records
+        if parse_vacancy_saved_at(row.get("saved_at")) is not None
+        and parse_vacancy_saved_at(row.get("saved_at")) < cutoff
+        and not protected_vacancy(row, overrides, submitted_ids)
+        and canonical_local_job_id(row.get("job_id", ""), row.get("url", ""))
+    }
+
+
+def purge_vacancy_records(job_ids):
+    """Back up and remove snapshots, preserve applications.csv, block rediscovery.
+
+    Returns (vacancies_hidden, snapshot_rows_removed, backup_path). Invalid JSON
+    lines are preserved unchanged. If a snapshot is absent, an INACTIVE tombstone
+    still prevents a legacy history fallback from showing the vacancy.
+    """
+    ids = {canonical_local_job_id(jid) for jid in job_ids}
+    ids.discard("")
+    if not ids:
+        return 0, 0, None
+
+    source_lines = []
+    if VACANCIES_FILE.exists():
+        source_lines = VACANCIES_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
+    retained = []
+    removed_rows = 0
+    for line in source_lines:
+        try:
+            row = json.loads(line)
+            jid = canonical_local_job_id(row.get("job_id", ""), row.get("url", ""))
+        except (ValueError, AttributeError, TypeError):
+            retained.append(line)
+            continue
+        if jid in ids:
+            removed_rows += 1
+        else:
+            retained.append(line)
+
+    # No history file is rewritten or removed. The backup is retained locally.
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    backups = VACANCIES_FILE.parent / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    backup_path = None
+    if VACANCIES_FILE.exists():
+        backup_path = backups / f"vacancies-{stamp}.jsonl"
+        shutil.copy2(VACANCIES_FILE, backup_path)
+
+    data = load_job_overrides()
+    for jid in ids:
+        data[jid] = {"decision": "INACTIVE", "updated_at": datetime.now().isoformat(timespec="seconds"),
+                     "reason": "manually_deleted"}
+    OVERRIDES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    def atomic_write(path, content):
+        name = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                             prefix=f".{path.name}-", delete=False) as tmp:
+                name = Path(tmp.name)
+                tmp.write(content)
+            os.replace(name, path)
+        finally:
+            if name is not None and name.exists():
+                name.unlink()
+
+    atomic_write(OVERRIDES_FILE, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    if source_lines:
+        atomic_write(VACANCIES_FILE, "".join(retained))
+    return len(ids), removed_rows, backup_path
+
+
 def load_vacancy_records() -> list[dict]:
     latest = {}
 
@@ -391,6 +496,13 @@ def load_vacancy_records() -> list[dict]:
         except Exception:
             pass
 
+    # A purged vacancy may still have historical application rows.
+    # Keep them in applications.csv without recreating the removed Dashboard item.
+    inactive = {
+        key for key, value in load_job_overrides().items()
+        if str(value.get("decision", "")).upper() == "INACTIVE"
+    }
+
     # Backward-compatible fallback for jobs recorded before Desktop 2.2.
     if HISTORY_FILE.exists():
         try:
@@ -406,7 +518,7 @@ def load_vacancy_records() -> list[dict]:
                     )
                     if not jid:
                         continue
-                    if jid not in latest:
+                    if jid not in latest and jid not in inactive:
                         copied = dict(row)
                         copied["job_id"] = jid
                         latest[jid] = copied
