@@ -62,6 +62,57 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["sources"]["startupjobs.cz"]["status"], "error")
         self.assertTrue(any("incomplete" in d for d in status["sources"]["startupjobs.cz"]["details"]))
 
+    async def test_submission_confirmation_requires_success_evidence(self):
+        def fake_page(url, message="Application details"):
+            return SimpleNamespace(
+                url=url,
+                locator=lambda selector: SimpleNamespace(
+                    inner_text=AsyncMock(return_value=message)
+                ),
+            )
+
+        original = "https://www.jobs.cz/odpoved/2001468066/"
+        redirect = fake_page("https://www.jobs.cz/prace/praha/")
+        self.assertEqual(
+            await main.manual_submit_success_signal(redirect, original), (False, "")
+        )
+        success = fake_page("https://www.jobs.cz/odpoved-odeslana/2001468066/")
+        self.assertEqual(
+            await main.manual_submit_success_signal(success, original),
+            (True, "post_submit_redirect"),
+        )
+        encoded = fake_page("https://www.jobs.cz/odpov%C4%9B%C4%8F-odesl%C3%A1na/2001468066/")
+        self.assertEqual(
+            await main.manual_submit_success_signal(encoded, original),
+            (True, "post_submit_redirect"),
+        )
+        confirmed_text = fake_page(original, "Děkujeme za odpověď")
+        self.assertEqual(
+            await main.manual_submit_success_signal(confirmed_text, original),
+            (True, "confirmation_text"),
+        )
+
+    async def test_missing_cover_letter_warns_before_manual_submit(self):
+        page = SimpleNamespace(
+            url="https://www.jobs.cz/odpoved/2001468066/",
+            wait_for_timeout=AsyncMock(),
+        )
+        details = {"cover_letter": False, "cover_letter_source": "field_not_found"}
+        output = io.StringIO()
+        with patch.multiple(
+            main, MANUAL_SUBMIT_HOLD=True, MANUAL_SUBMIT_WAIT_SECONDS=1,
+            AUTO_CZECH_COVER_LETTER=True,
+        ), patch.object(
+            main, "manual_submit_success_signal",
+            AsyncMock(return_value=(True, "post_submit_redirect")),
+        ), contextlib.redirect_stdout(output):
+            status, reason, url, form = await main.hold_for_manual_final_submit(
+                page, ("READY_FOR_MANUAL_SUBMIT", "prepared", page.url, details)
+            )
+        self.assertEqual(status, "SUBMITTED_MANUALLY")
+        self.assertIn("No cover-letter field detected", output.getvalue())
+        self.assertIn("manual copy", output.getvalue())
+
     async def test_source_failure_is_not_reported_as_successful_empty_search(self):
         with patch.multiple(main, DISCOVERY_NOTES={}, DISCOVERY_FAILURES={}, SOURCE_JOBS_CZ=True):
             main.discovery_failure("jobs.cz", "Timeout")

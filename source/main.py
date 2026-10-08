@@ -8,7 +8,7 @@ import re
 import hashlib
 import unicodedata
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import quote, urljoin, urlparse, parse_qs, urlencode, urlunparse, unquote
 
 import requests
 from bs4 import BeautifulSoup
@@ -6643,6 +6643,25 @@ async def handle_external_application(page):
     )
 
 
+def application_confirmation_url(url):
+    """Require a recognizable success route, not merely a page redirect."""
+    path = unquote(urlparse(str(url or "")).path).lower().rstrip("/")
+    if not path:
+        return False
+    return any(
+        re.search(r"(?:^|/)" + re.escape(segment) + r"(?:/|$)", path)
+        for segment in (
+            "odpoved-odeslana",
+            "odpověď-odeslána",
+            "application-submitted",
+            "application-success",
+            "application-confirmation",
+            "thank-you-for-applying",
+            "answer-sent",
+        )
+    )
+
+
 async def manual_submit_success_signal(page, original_url):
     """
     Conservative success detection after the user manually presses the
@@ -6677,17 +6696,11 @@ async def manual_submit_success_signal(page, original_url):
     if any(p in body for p in positive_phrases):
         return True, "confirmation_text"
 
-    # A redirect away from the Phenom application form is another strong signal,
-    # provided it isn't just a login/error route.
-    if current_url != original_url:
-        low = current_url.lower()
-        if (
-            "/apply?" not in low
-            and "error" not in low
-            and "login" not in low
-            and "signin" not in low
-        ):
-            return True, "post_submit_redirect"
+    # A generic navigation is NOT proof of submission (it could be a login,
+    # validation, or another vacancy page). Only known confirmation URL paths
+    # count without explicit confirmation text.
+    if current_url != original_url and application_confirmation_url(current_url):
+        return True, "post_submit_redirect"
 
     return False, ""
 
@@ -6703,7 +6716,14 @@ async def hold_for_manual_final_submit(page, result):
     if status != "READY_FOR_MANUAL_SUBMIT" or not MANUAL_SUBMIT_HOLD:
         return result
 
-    print("\n✅ APPLICATION IS FULLY READY")
+    print("\n✅ APPLICATION FORM READY FOR MANUAL REVIEW")
+    if AUTO_CZECH_COVER_LETTER and not form.get("cover_letter"):
+        source = str(form.get("cover_letter_source", ""))
+        if "field_not_found" in source:
+            print("⚠️ No cover-letter field detected; no letter was added to the form.")
+            print("   A drafted letter is available in the vacancy details for manual copy if appropriate.")
+        elif source:
+            print(f"⚠️ Cover letter not added automatically: {source}")
     print("   Review the visible application form one last time.")
     print("   If everything is correct, click the orange Submit button yourself.")
     print("   Job Agent will detect the confirmation automatically.")
