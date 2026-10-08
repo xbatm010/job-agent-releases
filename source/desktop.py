@@ -1617,8 +1617,6 @@ class JobAgentWindow(QMainWindow):
                 action.setEnabled(not running and not terminal)
             else:
                 action.setEnabled(not running and not terminal)
-            else:
-                action.setEnabled(not running and not terminal)
         inactive = str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() == "INACTIVE"
         self.detail_actions[4].setEnabled(not running and not inactive)
         self.detail_actions[5].setEnabled(not running and inactive)
