@@ -69,7 +69,7 @@ def read_manifest(url: str, channel: str, timeout=12):
     if not url:
         raise ValueError("Update manifest URL is not configured.")
 
-    req = urllib.request.Request(url, headers={"User-Agent": "JobAgentDesktop/2.9.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "JobAgentDesktop/2.9.1"})
     with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
 
@@ -102,7 +102,7 @@ def download_update(info: UpdateInfo, progress_cb=None) -> Path:
     target = DOWNLOAD_DIR / f"job-agent-{info.version}.zip"
     temp = target.with_suffix(".download")
 
-    req = urllib.request.Request(info.url, headers={"User-Agent": "JobAgentDesktop/2.9.0"})
+    req = urllib.request.Request(info.url, headers={"User-Agent": "JobAgentDesktop/2.9.1"})
     with urllib.request.urlopen(req, timeout=30, context=ssl_context()) as resp, temp.open("wb") as fh:
         total = int(resp.headers.get("Content-Length") or 0)
         done = 0

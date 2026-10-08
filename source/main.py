@@ -7201,7 +7201,7 @@ async def prepare_single_job(job):
 
 
 async def main():
-    print("🚀 Starting Job Agent v2.9.0 — three-source data-role discovery")
+    print("🚀 Starting Job Agent v2.9.1 — three-source data-role discovery")
     print(f"🔍 SEARCH_ONLY: {SEARCH_ONLY}")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")

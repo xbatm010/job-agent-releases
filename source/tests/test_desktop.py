@@ -11,7 +11,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 import desktop
 from desktop_theme import vacancy_detail_html
 
@@ -116,4 +116,45 @@ class DesktopTests(unittest.TestCase):
         self.assertGreaterEqual(self.window.dashboard_detail.viewport().height(), 130)
         self.assertGreaterEqual(self.window.dashboard_table.viewport().height(), 70)
         self.window.hide()
+
+    def test_filter_tabs_keep_selection_and_counts_in_search_scope(self):
+        self.window.filter_buttons["APPLY"].click()
+        self.assertEqual(len(self.window.dashboard_records), 1)
+        self.window.filter_buttons["APPLY"].click()
+        self.assertTrue(self.window.filter_buttons["APPLY"].isChecked())
+        self.window.dashboard_search.setText("SQL")
+        self.assertEqual(self.window.filter_buttons["All"].text(), "Все (1)")
+        self.assertEqual(self.window.filter_buttons["SUBMITTED"].text(), "Отправлены (0)")
+        self.window._show_all_vacancies()
+        self.assertEqual(len(self.window.dashboard_records), 3)
+        self.assertTrue(self.window.filter_buttons["All"].isChecked())
+
+    def test_source_menu_filters_without_losing_extra_status_filters(self):
+        self.window.source_filter_actions["startupjobs.cz"].trigger()
+        self.assertEqual(len(self.window.dashboard_records), 1)
+        self.assertEqual(self.window.dashboard_records[0]["source"], "startupjobs.cz")
+        self.assertTrue(self.window.source_filter_actions["startupjobs.cz"].isChecked())
+        self.window._show_all_vacancies()
+        self.window.extra_filter_actions["INTERESTING"].trigger()
+        self.assertEqual(self.window.dashboard_decision_filter.currentData(), "INTERESTING")
+        self.assertEqual(len(self.window.dashboard_records), 0)
+
+    def test_native_detail_uses_plain_text_and_explains_unknown_location(self):
+        record = dict(self.records[0], title="<b>Literal title</b>",
+                      description='<img src="file:///private">',
+                      location_gate="location_unknown")
+        self.window.dashboard_detail.set_record(record, "REVIEW")
+        labels = [label for label in self.window.dashboard_detail.findChildren(QLabel) if not label.isHidden()]
+        self.assertTrue(all(label.textFormat() == Qt.PlainText for label in labels if label.text()))
+        self.assertIn("Место работы не подтверждено", [label.text() for label in labels])
+        self.assertIn("<b>Literal title</b>", [label.text() for label in labels])
+        self.window.dashboard_detail.description_toggle.click()
+        descriptions = self.window.dashboard_detail.findChildren(QLabel, "Description")
+        self.assertTrue(any(not label.isHidden() and '<img src="file:///private">' in label.text() for label in descriptions))
+
+    def test_embedded_journal_opens_full_log(self):
+        self.window._append_log("Example run event")
+        self.assertEqual(self.window.latest_log.text(), "Example run event")
+        self.window.journal_header.click()
+        self.assertEqual(self.window.workspace_tabs.currentIndex(), 2)
 

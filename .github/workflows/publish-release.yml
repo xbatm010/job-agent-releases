@@ -542,6 +542,7 @@ jobs:
             --hidden-import main \
             --hidden-import updater \
             --hidden-import desktop_theme \
+            --hidden-import desktop_widgets \
             --hidden-import playwright \
             --hidden-import playwright.async_api \
             --hidden-import playwright.sync_api \
@@ -642,7 +643,7 @@ jobs:
           rm -rf source
           mkdir -p source
 
-          for f in desktop.py desktop_theme.py main.py updater.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md update_manifest.example.json; do
+          for f in desktop.py desktop_theme.py desktop_widgets.py main.py updater.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md update_manifest.example.json; do
             if [ -f "buildsrc/$f" ]; then
               cp "buildsrc/$f" "source/$f"
             fi

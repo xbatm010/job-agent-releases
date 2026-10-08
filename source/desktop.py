@@ -1,5 +1,7 @@
 import csv
-from desktop_theme import LIGHT_STYLE, DECISION_LABELS, display_decision, vacancy_detail_html
+from html import escape
+from desktop_theme import LIGHT_STYLE, DECISION_LABELS, display_decision
+from desktop_widgets import VacancyDelegate, VacancyDetail, icon_pixmap, ui_icon, SOURCE_NAMES
 import io
 import json
 import multiprocessing as mp
@@ -10,8 +12,8 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt, Signal, QThread, QObject, Slot, QUrl
-from PySide6.QtGui import QColor, QPalette, QTextCursor, QFont, QDesktopServices, QIcon, QPixmap, QPainter
+from PySide6.QtCore import QTimer, Qt, Signal, QThread, QObject, Slot, QUrl, QSize
+from PySide6.QtGui import QColor, QPalette, QTextCursor, QFont, QFontDatabase, QDesktopServices, QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,9 +21,6 @@ from PySide6.QtWidgets import (
     QMenu,
     QScrollArea,
     QSizePolicy,
-    QStyledItemDelegate,
-    QStyleOptionViewItem,
-    QStyle,
     QCheckBox,
     QFileDialog,
     QFormLayout,
@@ -90,10 +89,10 @@ def load_version_info():
         p = resource_path("version.json")
         return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return {"app_name": "Job Agent Desktop", "version": "2.9.0", "channel": "beta"}
+        return {"app_name": "Job Agent Desktop", "version": "2.9.1", "channel": "beta"}
 
 VERSION_INFO = None
-APP_VERSION = "2.9.0"
+APP_VERSION = "2.9.1"
 TERMINAL_STATUSES = {
     "SUBMITTED",
     "SUBMITTED_MANUALLY",
@@ -697,29 +696,6 @@ class UpdateDownloadWorker(QObject):
             self.finished.emit(None, f"{type(exc).__name__}: {exc}")
 
 
-class VacancyDelegate(QStyledItemDelegate):
-    """Readable title/company hierarchy without HTML in table cells."""
-    def paint(self, painter, option, index):
-        opt = QStyleOptionViewItem(option)
-        self.initStyleOption(opt, index)
-        title, _, company = str(index.data(Qt.DisplayRole) or "").partition("\n")
-        opt.text = ""
-        style = opt.widget.style() if opt.widget else QApplication.style()
-        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, opt.widget)
-        painter.save()
-        rect = opt.rect.adjusted(10, 10, -10, -8)
-        font = QFont(opt.font)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.setPen(QColor("#192639"))
-        painter.drawText(rect, Qt.AlignLeft | Qt.AlignTop, painter.fontMetrics().elidedText(title, Qt.ElideRight, rect.width()))
-        font.setBold(False)
-        painter.setFont(font)
-        painter.setPen(QColor("#708097"))
-        painter.drawText(rect, Qt.AlignLeft | Qt.AlignBottom, painter.fontMetrics().elidedText(company, Qt.ElideRight, rect.width()))
-        painter.restore()
-
-
 class JobAgentWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -786,110 +762,154 @@ class JobAgentWindow(QMainWindow):
 
     def _build_ui(self):
         palette = QPalette()
-        for role, color in [(QPalette.Window, "#f8faff"), (QPalette.WindowText, "#192639"), (QPalette.Base, "#ffffff"), (QPalette.Text, "#192639"), (QPalette.Button, "#ffffff"), (QPalette.ButtonText, "#192639"), (QPalette.Highlight, "#d9e8ff"), (QPalette.HighlightedText, "#192639")]:
+        for role, color in [(QPalette.Window, "#ffffff"), (QPalette.WindowText, "#101626"), (QPalette.Base, "#ffffff"), (QPalette.Text, "#101626"), (QPalette.Button, "#ffffff"), (QPalette.ButtonText, "#101626"), (QPalette.Highlight, "#e4efff"), (QPalette.HighlightedText, "#101626")]:
             palette.setColor(role, QColor(color))
         self.setPalette(palette)
-        self.setStyleSheet(LIGHT_STYLE)
+        families = QFontDatabase.families()
+        family = next((f for preferred in ("Helvetica Neue", "Arial", "Nimbus Sans [urw]", "Nimbus Sans [UKWN]", "DejaVu Sans") for f in families if f == preferred), QApplication.font().family())
+        self.setStyleSheet(LIGHT_STYLE.replace('"Helvetica Neue", "Arial", sans-serif', f'"{family}"'))
         root = QWidget()
         self.setCentralWidget(root)
         outer = QHBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        sidebar = QWidget()
+        self.sidebar = sidebar = QWidget()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(176)
+        sidebar.setFixedWidth(200)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(14, 24, 14, 18)
+        side.setContentsMargins(10, 32, 10, 20)
         side.setSpacing(8)
         brand = QHBoxLayout()
+        brand.setContentsMargins(10, 0, 0, 0)
+        brand.setSpacing(12)
         self.brand_icon = QLabel()
-        self.brand_icon.setPixmap(brand_pixmap(32))
+        self.brand_icon.setPixmap(icon_pixmap("briefcase", "#ffffff", 36, "#065dff"))
         brand.addWidget(self.brand_icon)
         brand_name = QLabel("Job Agent")
-        brand_name.setStyleSheet("font-size:18px;font-weight:700;")
+        brand_name.setStyleSheet("font-size:19px;font-weight:600;")
         brand.addWidget(brand_name)
         brand.addStretch()
         side.addLayout(brand)
-        side.addSpacing(28)
+        side.addSpacing(20)
         self.nav_buttons = []
-        for index, label in enumerate(["Обзор", "Отклики", "Журнал"]):
-            button = QPushButton(label)
+        for index, label, icon_name in [(0, "Обзор", "home"), (1, "Отклики", "document"), (2, "Журнал", "list")]:
+            button = QPushButton("  " + label)
             button.setObjectName("Nav")
+            button.setIcon(ui_icon(icon_name))
+            button.setIconSize(QSize(22, 22))
             button.setCheckable(True)
             button.clicked.connect(lambda checked=False, i=index: self.workspace_tabs.setCurrentIndex(i))
             self.nav_buttons.append(button)
             side.addWidget(button)
-        saved = QPushButton("Избранное")
+            if index == 0:
+                vacancies = QPushButton("  Вакансии")
+                vacancies.setObjectName("Nav")
+                vacancies.setIcon(ui_icon("search"))
+                vacancies.setIconSize(QSize(22, 22))
+                vacancies.clicked.connect(self._show_all_vacancies)
+                side.addWidget(vacancies)
+        saved = QPushButton("  Избранное")
         saved.setObjectName("Nav")
+        saved.setIcon(ui_icon("bookmark"))
+        saved.setIconSize(QSize(22, 22))
         saved.clicked.connect(self._show_favorites)
         side.addWidget(saved)
         side.addStretch()
-        for label, tab in [("Профиль", 0), ("Настройки", 1), ("Обновления", 4)]:
-            button = QPushButton(label)
+        for label, tab, icon_name in [("Профиль", 0, "person"), ("Настройки", 1, "settings"), ("Обновления", 4, "update")]:
+            button = QPushButton("  " + label)
             button.setObjectName("Nav")
+            button.setIcon(ui_icon(icon_name))
+            button.setIconSize(QSize(22, 22))
             button.clicked.connect(lambda checked=False, i=tab: self._open_settings(i))
             side.addWidget(button)
         version = QLabel(f"Версия {APP_VERSION} · {APP_CHANNEL}")
         version.setObjectName("Muted")
+        version.setContentsMargins(14, 12, 0, 0)
+        version.setStyleSheet("font-size:12px;")
         side.addWidget(version)
         outer.addWidget(sidebar)
 
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(24, 24, 24, 16)
+        layout.setContentsMargins(26, 36, 20, 16)
         layout.setSpacing(16)
         outer.addWidget(content, 1)
         heading = QHBoxLayout()
+        heading.setSpacing(20)
         heading_text = QVBoxLayout()
+        heading_text.setSpacing(4)
         self.page_title = QLabel("Вакансии для тебя")
         self.page_title.setObjectName("Title")
         heading_text.addWidget(self.page_title)
         self.page_subtitle = QLabel("Прага и рядом · Data / BI / Reporting")
-        self.page_subtitle.setObjectName("Muted")
+        self.page_subtitle.setObjectName("Subtitle")
         self.page_subtitle.setWordWrap(True)
         heading_text.addWidget(self.page_subtitle)
         heading.addLayout(heading_text, 1)
-        self.start_btn = QPushButton("Начать поиск")
-        self.start_btn.setObjectName("Primary")
-        self.start_btn.clicked.connect(self.start_agent)
-        self.stop_btn = QPushButton("Стоп")
-        self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop_agent)
-        heading.addWidget(self.start_btn)
-        heading.addWidget(self.stop_btn)
-        layout.addLayout(heading)
-
-        summary = QHBoxLayout()
         self.metric_panels = []
+        self.metric_dividers = []
         self.total_value, self.processed_value, self.review_value = QLabel("0"), QLabel("0"), QLabel("0")
-        for value, label in [(self.total_value, "В истории"), (self.processed_value, "Отправлено"), (self.review_value, "На проверку")]:
+        for i, (value, label) in enumerate([(self.total_value, "в истории"), (self.processed_value, "отправлено"), (self.review_value, "на проверку")]):
+            if i:
+                divider = QFrame()
+                divider.setObjectName("MetricDivider")
+                divider.setFixedSize(1, 50)
+                heading.addWidget(divider)
+                self.metric_dividers.append(divider)
             panel = QWidget()
             box = QVBoxLayout(panel)
             box.setContentsMargins(0, 0, 0, 0)
+            box.setSpacing(2)
             value.setObjectName("Metric")
             box.addWidget(value)
             caption = QLabel(label)
-            caption.setObjectName("Muted")
+            caption.setObjectName("MetricCaption")
             box.addWidget(caption)
-            summary.addWidget(panel)
+            heading.addWidget(panel)
             self.metric_panels.append(panel)
-            summary.addSpacing(28)
-        summary.addStretch()
+        run_controls = QVBoxLayout()
+        run_controls.setSpacing(6)
+        run_buttons = QHBoxLayout()
+        self.start_btn = QPushButton("Начать поиск")
+        self.start_btn.setObjectName("Primary")
+        self.start_btn.setIcon(ui_icon("search", "#ffffff", 21))
+        self.start_btn.setIconSize(QSize(21, 21))
+        self.start_btn.setMinimumHeight(46)
+        self.start_btn.clicked.connect(self.start_agent)
+        self.stop_btn = QPushButton("Стоп")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.hide()
+        self.stop_btn.clicked.connect(self.stop_agent)
+        run_buttons.addWidget(self.start_btn)
+        run_buttons.addWidget(self.stop_btn)
+        run_controls.addLayout(run_buttons)
         self.search_only_check = QCheckBox("Только поиск")
+        self.search_only_check.setStyleSheet("font-size:11px; color:#69758d;")
         self.search_only_check.setToolTip("Собрать и оценить вакансии. Подготовку выбранного отклика можно запустить отдельно.")
         self.search_only_check.toggled.connect(self._update_run_mode)
-        summary.addWidget(self.search_only_check)
-        layout.addLayout(summary)
+        run_controls.addWidget(self.search_only_check, 0, Qt.AlignRight)
+        heading.addLayout(run_controls)
+        layout.addLayout(heading)
 
-        source_row = QHBoxLayout()
+        self.source_strip = QFrame()
+        self.source_strip.setObjectName("SourceStrip")
+        self.source_strip.setMinimumHeight(44)
+        source_row = QHBoxLayout(self.source_strip)
+        source_row.setContentsMargins(6, 2, 6, 2)
+        source_row.setSpacing(0)
         self.source_badges = {}
-        for source in ("jobs.cz", "prace.cz", "startupjobs.cz"):
-            badge = QLabel(source + " · ещё не проверен")
+        for i, source in enumerate(("jobs.cz", "prace.cz", "startupjobs.cz")):
+            if i:
+                divider = QFrame()
+                divider.setObjectName("MetricDivider")
+                divider.setFixedSize(1, 20)
+                source_row.addWidget(divider)
+            badge = QLabel()
             badge.setObjectName("Source")
-            badge.setWordWrap(True)
             self.source_badges[source] = badge
-            source_row.addWidget(badge, 1)
-        layout.addLayout(source_row)
+            source_row.addWidget(badge)
+        source_row.addStretch()
+        layout.addWidget(self.source_strip)
 
         self.workspace_tabs = QTabWidget()
         self.workspace_tabs.tabBar().hide()
@@ -898,61 +918,157 @@ class JobAgentWindow(QMainWindow):
         dashboard_page = QWidget()
         dashboard_layout = QVBoxLayout(dashboard_page)
         dashboard_layout.setContentsMargins(0, 0, 0, 0)
-        dashboard_layout.setSpacing(12)
+        dashboard_layout.setSpacing(16)
         dash_filters = QGridLayout()
+        self.filters_layout = dash_filters
+        dash_filters.setContentsMargins(0, 0, 0, 0)
+        dash_filters.setSpacing(10)
         self.dashboard_search = QLineEdit()
-        self.dashboard_search.setPlaceholderText("Поиск по названию, компании или навыкам…")
-        self.dashboard_decision_filter = QComboBox()
+        self.dashboard_search.setObjectName("Search")
+        self.dashboard_search.setPlaceholderText("Поиск по названиям вакансий, компаниям, навыкам…")
+        self.dashboard_search.addAction(ui_icon("search", "#69758d", 20), QLineEdit.LeadingPosition)
+        self.dashboard_search.setClearButtonEnabled(True)
+        self.dashboard_decision_filter = QComboBox(self)
         for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue ≥ threshold")]:
             self.dashboard_decision_filter.addItem(label, value)
-        self.dashboard_source_filter = QComboBox()
+        self.dashboard_decision_filter.hide()
+        self.dashboard_source_filter = QComboBox(self)
         self.dashboard_source_filter.addItem("Все источники", "All sources")
         for source in ("jobs.cz", "prace.cz", "startupjobs.cz"):
             self.dashboard_source_filter.addItem(source, source)
+        self.dashboard_source_filter.hide()
+        self.filter_tabs = QWidget()
+        filter_row = QHBoxLayout(self.filter_tabs)
+        filter_row.setContentsMargins(0, 0, 0, 0)
+        filter_row.setSpacing(6)
+        self.filter_buttons = {}
+        for value, label in [("All", "Все"), ("APPLY", "Подходят"), ("REVIEW", "Проверить"), ("SUBMITTED", "Отправлены")]:
+            button = QPushButton(label + " (0)")
+            button.setObjectName("FilterTab")
+            button.setCheckable(True)
+            button.clicked.connect(lambda checked=False, v=value: self._select_decision_filter(v))
+            self.filter_buttons[value] = button
+            filter_row.addWidget(button)
+        self.filter_menu_btn = QPushButton()
+        self.filter_menu_btn.setObjectName("IconButton")
+        self.filter_menu_btn.setIcon(ui_icon("filter", "#69758d", 21))
+        self.filter_menu_btn.setToolTip("Источник и дополнительные фильтры")
+        filter_menu = QMenu(self.filter_menu_btn)
+        self.source_filter_actions = {}
+        source_menu = filter_menu.addMenu("Источник")
+        for i in range(self.dashboard_source_filter.count()):
+            value = self.dashboard_source_filter.itemData(i)
+            action = source_menu.addAction(self.dashboard_source_filter.itemText(i))
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked=False, v=value: self.dashboard_source_filter.setCurrentIndex(self.dashboard_source_filter.findData(v)))
+            self.source_filter_actions[value] = action
+        filter_menu.addSeparator()
+        self.extra_filter_actions = {}
+        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("Manual queue ≥ threshold", "Можно в очередь")]:
+            action = filter_menu.addAction(label)
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked=False, v=value: self._select_decision_filter(v))
+            self.extra_filter_actions[value] = action
+        filter_menu.addSeparator()
+        filter_menu.addAction("Сбросить фильтры", self._show_all_vacancies)
+        self.filter_menu_btn.setMenu(filter_menu)
+        filter_row.addWidget(self.filter_menu_btn)
         self.dashboard_count = QLabel("0 вакансий")
         self.dashboard_count.setObjectName("Muted")
-        dash_filters.addWidget(self.dashboard_search, 0, 0, 1, 3)
-        dash_filters.addWidget(self.dashboard_decision_filter, 1, 0)
-        dash_filters.addWidget(self.dashboard_source_filter, 1, 1)
-        dash_filters.addWidget(self.dashboard_count, 1, 2)
-        dash_filters.setColumnStretch(0, 2)
-        dash_filters.setColumnStretch(1, 1)
+        self.dashboard_count.hide()
+        dash_filters.addWidget(self.dashboard_search, 0, 0)
+        dash_filters.addWidget(self.filter_tabs, 0, 1)
+        dash_filters.setColumnStretch(0, 1)
         dashboard_layout.addLayout(dash_filters)
         self.dashboard_search.textChanged.connect(self._refresh_dashboard)
         self.dashboard_decision_filter.currentIndexChanged.connect(self._refresh_dashboard)
         self.dashboard_source_filter.currentIndexChanged.connect(self._refresh_dashboard)
 
         self.dashboard_splitter = QSplitter(Qt.Horizontal)
+        self.dashboard_splitter.setHandleWidth(14)
+        self.dashboard_splitter.splitterMoved.connect(lambda *_: self._fit_detail_actions())
         self.dashboard_splitter.setChildrenCollapsible(False)
-        self.dashboard_table = self._new_table(["Вакансия / компания", "Источник", "Оценка", "Статус"])
-        self.dashboard_table.setItemDelegateForColumn(0, VacancyDelegate(self.dashboard_table))
+        self.list_panel = QWidget()
+        list_layout = QVBoxLayout(self.list_panel)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(14)
+        self.dashboard_table = self._new_table(["Вакансия", "Источник", "Оценка", "Статус"])
+        self.dashboard_table.setItemDelegate(VacancyDelegate(self.dashboard_table))
+        self.dashboard_table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.dashboard_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.dashboard_table.setColumnWidth(1, 116)
-        self.dashboard_table.setColumnWidth(2, 72)
-        self.dashboard_table.setColumnWidth(3, 115)
-        self.dashboard_table.verticalHeader().setDefaultSectionSize(72)
+        self.dashboard_table.setColumnWidth(1, 148)
+        self.dashboard_table.setColumnWidth(2, 98)
+        self.dashboard_table.setColumnWidth(3, 124)
+        self.dashboard_table.verticalHeader().setDefaultSectionSize(94)
         self.dashboard_table.itemSelectionChanged.connect(self._dashboard_selection_changed)
         self.dashboard_table.doubleClicked.connect(lambda _: self._open_selected_job())
-        self.dashboard_splitter.addWidget(self.dashboard_table)
-        detail_panel = QWidget()
-        detail_panel.setMinimumWidth(280)
+        list_layout.addWidget(self.dashboard_table, 1)
+        self.run_journal = QFrame()
+        self.run_journal.setObjectName("RunJournal")
+        self.run_journal.setFixedHeight(144)
+        journal_layout = QVBoxLayout(self.run_journal)
+        journal_layout.setContentsMargins(0, 0, 0, 12)
+        self.journal_header = QPushButton("Журнал запуска")
+        self.journal_header.setObjectName("JournalHeader")
+        self.journal_header.setIcon(ui_icon("down", "#101626", 16))
+        self.journal_header.clicked.connect(lambda: self.workspace_tabs.setCurrentIndex(2))
+        journal_layout.addWidget(self.journal_header)
+        journal_row = QHBoxLayout()
+        journal_row.setContentsMargins(18, 0, 14, 0)
+        self.status_label = QLabel("●")
+        self.status_label.setStyleSheet("color:#33a129; font-size:20px;")
+        self.status_label.setToolTip("Готов к поиску")
+        self.run_time_value = QLabel("—")
+        self.run_time_value.setObjectName("Muted")
+        self.browser_status_value = QLabel("")
+        self.latest_log = QLabel("Начни поиск — результаты появятся в списке")
+        self.latest_log.setObjectName("Muted")
+        self.latest_log.setWordWrap(True)
+        self.latest_log.setMaximumHeight(46)
+        self.latest_log.setStyleSheet("font-size:12px;")
+        self.latest_log.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        journal_row.addWidget(self.status_label)
+        journal_row.addSpacing(10)
+        journal_row.addWidget(self.run_time_value)
+        journal_row.addSpacing(16)
+        journal_row.addWidget(self.latest_log, 1)
+        journal_more = QPushButton()
+        journal_more.setObjectName("IconButton")
+        journal_more.setIcon(ui_icon("more", "#69758d", 18))
+        journal_more.setToolTip("Открыть полный журнал")
+        journal_more.clicked.connect(lambda: self.workspace_tabs.setCurrentIndex(2))
+        journal_row.addWidget(journal_more)
+        journal_layout.addLayout(journal_row, 1)
+        list_layout.addWidget(self.run_journal)
+        self.dashboard_splitter.addWidget(self.list_panel)
+        detail_panel = QFrame()
+        detail_panel.setObjectName("DetailCard")
         detail_layout = QVBoxLayout(detail_panel)
-        detail_layout.setContentsMargins(0, 0, 0, 0)
-        self.dashboard_detail = QTextEdit()
-        self.dashboard_detail.setReadOnly(True)
-        self.dashboard_detail.document().setDocumentMargin(20)
-        self.dashboard_detail.setPlaceholderText("Выбери вакансию, чтобы увидеть описание и причины оценки.")
+        detail_layout.setContentsMargins(20, 18, 18, 12)
+        detail_layout.setSpacing(10)
+        self.dashboard_detail = VacancyDetail()
+        self.dashboard_detail.setPlainText("Выбери вакансию, чтобы увидеть описание и причины оценки.")
         detail_layout.addWidget(self.dashboard_detail, 1)
         dash_buttons = QGridLayout()
+        dash_buttons.setSpacing(10)
         self.detail_buttons_layout = dash_buttons
         self.prepare_now_btn = QPushButton("Подготовить отклик")
         self.prepare_now_btn.setObjectName("Primary")
+        self.prepare_now_btn.setIcon(ui_icon("document", "#ffffff", 19))
         self.open_job_btn = QPushButton("Открыть вакансию")
+        self.open_job_btn.setObjectName("Outline")
+        self.open_job_btn.setIcon(ui_icon("external", "#065dff", 17))
         self.prepare_now_btn.clicked.connect(self._prepare_selected_now)
         self.open_job_btn.clicked.connect(self._open_selected_job)
-        dash_buttons.addWidget(self.prepare_now_btn, 0, 0, 1, 2)
-        dash_buttons.addWidget(self.open_job_btn, 1, 0)
-        more = QPushButton("Ещё…")
+        self.prepare_now_btn.setMinimumHeight(44)
+        self.open_job_btn.setMinimumHeight(44)
+        dash_buttons.addWidget(self.prepare_now_btn, 0, 0)
+        dash_buttons.addWidget(self.open_job_btn, 0, 1)
+        dash_buttons.setColumnStretch(0, 1)
+        more = QPushButton()
+        more.setObjectName("IconButton")
+        more.setIcon(ui_icon("more", "#69758d", 18))
+        more.setToolTip("Очередь, избранное и сопроводительное письмо")
         menu = QMenu(more)
         self.detail_actions = []
         for label, callback in [
@@ -969,15 +1085,21 @@ class JobAgentWindow(QMainWindow):
             self.detail_actions.append(action)
         more.setMenu(menu)
         self.more_job_btn = more
-        dash_buttons.addWidget(more, 1, 1)
         detail_layout.addLayout(dash_buttons)
+        note_row = QHBoxLayout()
+        note_icon = QLabel()
+        note_icon.setPixmap(icon_pixmap("info", "#69758d", 16))
+        note_row.addWidget(note_icon)
         note = QLabel("Финальную отправку подтверждаешь ты")
         self.submit_note = note
         note.setObjectName("Muted")
+        note.setStyleSheet("font-size:11px;")
         note.setWordWrap(True)
-        detail_layout.addWidget(note)
+        note_row.addWidget(note, 1)
+        note_row.addWidget(more)
+        detail_layout.addLayout(note_row)
         self.dashboard_splitter.addWidget(detail_panel)
-        self.dashboard_splitter.setSizes([640, 390])
+        self.dashboard_splitter.setSizes([700, 440])
         dashboard_layout.addWidget(self.dashboard_splitter, 1)
         self.workspace_tabs.addTab(dashboard_page, "Обзор")
 
@@ -1012,21 +1134,6 @@ class JobAgentWindow(QMainWindow):
         self.log.setFont(QFont("Menlo", 11))
         log_layout.addWidget(self.log, 1)
         self.workspace_tabs.addTab(log_page, "Журнал")
-        footer = QHBoxLayout()
-        self.status_label = QLabel("● Готов к поиску")
-        self.run_time_value = QLabel("—")
-        self.browser_status_value = QLabel("")
-        self.latest_log = QLabel("Начни поиск — результаты появятся в списке")
-        self.latest_log.setObjectName("Muted")
-        self.latest_log.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        footer.addWidget(self.status_label)
-        footer.addWidget(self.run_time_value)
-        footer.addWidget(self.latest_log, 1)
-        show_log = QPushButton("Журнал запуска")
-        show_log.clicked.connect(lambda: self.workspace_tabs.setCurrentIndex(2))
-        footer.addWidget(show_log)
-        layout.addLayout(footer)
-
         self.settings_dialog = QDialog(self)
         self.settings_dialog.setWindowTitle("Job Agent · Настройки")
         self.settings_dialog.resize(720, 640)
@@ -1262,6 +1369,7 @@ class JobAgentWindow(QMainWindow):
         self.page_title.setText(["Вакансии для тебя", "История откликов", "Журнал работы"][index])
         for i, button in enumerate(self.nav_buttons):
             button.setChecked(i == index)
+            button.setIcon(ui_icon(["home", "document", "list"][i], "#065dff" if i == index else "#101626"))
 
     def _show_favorites(self):
         self.workspace_tabs.setCurrentIndex(0)
@@ -1286,24 +1394,48 @@ class JobAgentWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, "dashboard_splitter"):
-            direction = Qt.Vertical if self.width() < 1120 else Qt.Horizontal
-            compact = direction == Qt.Vertical
-            for panel in self.metric_panels:
-                panel.setVisible(not compact)
-            self.submit_note.setVisible(not compact)
-            if self.dashboard_splitter.orientation() != direction:
-                self.dashboard_splitter.setOrientation(direction)
-                for button in [self.prepare_now_btn, self.open_job_btn, self.more_job_btn]:
-                    self.detail_buttons_layout.removeWidget(button)
-                if compact:
-                    for col, button in enumerate([self.prepare_now_btn, self.open_job_btn, self.more_job_btn]):
-                        self.detail_buttons_layout.addWidget(button, 0, col)
-                else:
-                    self.detail_buttons_layout.addWidget(self.prepare_now_btn, 0, 0, 1, 2)
-                    self.detail_buttons_layout.addWidget(self.open_job_btn, 1, 0)
-                    self.detail_buttons_layout.addWidget(self.more_job_btn, 1, 1)
-                self.dashboard_splitter.setSizes([150, 300] if compact else [640, 390])
+        if not hasattr(self, "dashboard_splitter"):
+            return
+        compact = self.width() < 1120
+        self.sidebar.setFixedWidth(180 if compact else 200)
+        self.page_title.setStyleSheet("font-size:26px;" if compact else "")
+        self.page_subtitle.setStyleSheet("font-size:14px;" if compact else "")
+        for panel in self.metric_panels + self.metric_dividers:
+            panel.setVisible(self.width() >= 1280)
+        self.run_journal.setVisible(not compact and self.height() >= 740)
+        self.submit_note.setVisible(True)
+        direction = Qt.Vertical if compact else Qt.Horizontal
+        filters_stacked = self.width() < 1350
+        if getattr(self, "_filters_stacked", None) != filters_stacked:
+            self._filters_stacked = filters_stacked
+            self.filters_layout.removeWidget(self.filter_tabs)
+            self.filters_layout.addWidget(self.filter_tabs, 1 if filters_stacked else 0, 0 if filters_stacked else 1)
+        if self.dashboard_splitter.orientation() != direction:
+            self.dashboard_splitter.setOrientation(direction)
+            self.dashboard_splitter.setSizes([180, 310] if compact else [700, 440])
+        # The card buttons wrap only when its actual width needs it.
+        self._fit_detail_actions()
+        QTimer.singleShot(0, self._fit_detail_actions)
+
+    def _fit_detail_actions(self):
+        stacked = self.dashboard_splitter.orientation() == Qt.Horizontal and self.dashboard_splitter.widget(1).width() < 420
+        if stacked == getattr(self, "_actions_stacked", None):
+            return
+        self._actions_stacked = stacked
+        self.detail_buttons_layout.removeWidget(self.open_job_btn)
+        self.detail_buttons_layout.addWidget(self.open_job_btn, 1 if stacked else 0, 0 if stacked else 1)
+
+    def _select_decision_filter(self, value):
+        if self.dashboard_decision_filter.currentData() == value:
+            self._refresh_dashboard()
+        else:
+            self.dashboard_decision_filter.setCurrentIndex(self.dashboard_decision_filter.findData(value))
+
+    def _show_all_vacancies(self):
+        self.workspace_tabs.setCurrentIndex(0)
+        self.dashboard_search.clear()
+        self.dashboard_source_filter.setCurrentIndex(0)
+        self._select_decision_filter("All")
 
     def _application_source_supported(self, record):
         return str(record.get("source", "")).strip().lower() in {
@@ -1330,7 +1462,7 @@ class JobAgentWindow(QMainWindow):
         decision = display_decision(record, overrides)
         signature = (json.dumps(record, sort_keys=True, ensure_ascii=False), decision)
         if signature != getattr(self, "_detail_signature", None):
-            self.dashboard_detail.setHtml(vacancy_detail_html(record, decision))
+            self.dashboard_detail.set_record(record, decision)
             self._detail_signature = signature
         running = bool(self.agent_process and self.agent_process.is_alive())
         terminal = decision == "SUBMITTED"
@@ -1361,7 +1493,7 @@ class JobAgentWindow(QMainWindow):
             and record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
         )
 
-    def _dashboard_record_matches_filters(self, record, overrides):
+    def _dashboard_record_matches_filters(self, record, overrides, include_decision=True):
         query = self.dashboard_search.text().strip().lower()
         if query:
             haystack = " ".join([
@@ -1391,6 +1523,8 @@ class JobAgentWindow(QMainWindow):
             display_decision = "SUBMITTED"
         status = str(record.get("status", "")).upper().strip()
 
+        if not include_decision:
+            return True
         selected = self.dashboard_decision_filter.currentData() or "All"
         if selected == "All":
             return True
@@ -1435,6 +1569,8 @@ class JobAgentWindow(QMainWindow):
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.UserRole, jid)
+                item.setData(Qt.UserRole + 1, record)
+                item.setData(Qt.UserRole + 2, decision)
                 item.setToolTip(value)
                 if col in {2, 3}:
                     item.setForeground(QColor(colors.get(decision, "#425777")))
@@ -1445,6 +1581,21 @@ class JobAgentWindow(QMainWindow):
             self.dashboard_table.selectRow(restore_row)
         self.dashboard_table.blockSignals(False)
         self.dashboard_count.setText(f"{len(self.dashboard_records)} вакансий")
+        selected_filter = self.dashboard_decision_filter.currentData()
+        scoped = [r for r in self.dashboard_all_records if self._dashboard_record_matches_filters(r, overrides, include_decision=False)]
+        for key, button in self.filter_buttons.items():
+            count = len(scoped) if key == "All" else sum(display_decision(r, overrides) == key for r in scoped)
+            label = {"All": "Все", "APPLY": "Подходят", "REVIEW": "Проверить", "SUBMITTED": "Отправлены"}[key]
+            button.setText(f"{label} ({count})")
+            button.setChecked(selected_filter == key)
+        for key, action in self.extra_filter_actions.items():
+            action.setChecked(selected_filter == key)
+        for key, action in self.source_filter_actions.items():
+            action.setChecked(self.dashboard_source_filter.currentData() == key)
+        source_filter = self.dashboard_source_filter.currentData()
+        filtered = source_filter != "All sources" or selected_filter in self.extra_filter_actions
+        self.filter_menu_btn.setIcon(ui_icon("filter", "#065dff" if filtered else "#69758d", 21))
+        self.filter_menu_btn.setToolTip("Источник: " + self.dashboard_source_filter.currentText() + " · " + self.dashboard_decision_filter.currentText())
         self.total_value.setText(str(len(self.dashboard_all_records)))
         self.review_value.setText(str(sum(display_decision(r, overrides) == "REVIEW" for r in self.dashboard_all_records)))
         application_records = [r for r in self.dashboard_all_records if r.get("status", "") not in {"", "REVIEW_PENDING", "SKIPPED", "READY_TO_PREPARE"}]
@@ -1929,17 +2080,22 @@ class JobAgentWindow(QMainWindow):
     def _set_running(self, running):
         self.start_btn.setEnabled(not running)
         self.stop_btn.setEnabled(running)
+        self.stop_btn.setVisible(running)
         self.search_only_check.setEnabled(not running)
         if hasattr(self, "prepare_now_btn"):
             self.prepare_now_btn.setEnabled(not running)
 
         if running:
-            self.status_label.setText("● Поиск идёт")
+            self.status_label.setText("●")
+            self.status_label.setToolTip("Поиск идёт")
+            self.journal_header.setText("Журнал запуска · поиск идёт")
             self.status_label.setStyleSheet(
                 "font-weight: 700; font-size: 15px; color: #1f6fbd;"
             )
         else:
-            self.status_label.setText("● Готов к поиску")
+            self.status_label.setText("●")
+            self.status_label.setToolTip("Готов к поиску")
+            self.journal_header.setText("Журнал запуска")
             self.status_label.setStyleSheet(
                 "font-weight: 700; font-size: 15px; color: #227722;"
             )
@@ -2111,9 +2267,8 @@ class JobAgentWindow(QMainWindow):
             status = info.get("status", "unknown")
             count = info.get("count", 0)
             caption = {"ok": f"{count} найдено", "partial": f"{count} · есть ошибки", "empty": "0 · нужна проверка", "error": "ошибка загрузки", "disabled": "выключен", "searching": "поиск…" if running else "не завершён", "unknown": "не проверен"}.get(status, "нужна проверка")
-            color = "#23713e" if status == "ok" else "#97620d" if status in {"partial", "empty", "error"} else "#6b7990"
-            label.setText(name + " · " + caption)
-            label.setStyleSheet(f"color:{color};")
+            color = "#33a129" if status == "ok" else "#efa216" if status in {"partial", "empty", "error"} else "#6b7990"
+            label.setText(f'<span style="color:{color};font-size:19px;">●</span> &nbsp; <b>{SOURCE_NAMES[name]}</b> &nbsp; <span style="color:#69758d;">{escape(caption)}</span>')
             details = "\n".join(info.get("details", []))
             label.setToolTip("Последний поиск: " + data.get("saved_at", "—") + ("\n" + details if details else ""))
 

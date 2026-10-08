@@ -57,3 +57,14 @@ Run offline regression tests (including real Qt widgets) with:
 
 `QT_QPA_PLATFORM=offscreen python -m unittest discover -s source/tests -v`
 
+
+Desktop 2.9.1 refines the selected light concept with inline header metrics,
+vector navigation icons, a single source-health strip, counted filter tabs,
+three-line vacancy rows, source marks, score/status pills, a native detail
+card with match checks and skill tags, and a run journal below the table.
+The detail description remains available through a disclosure control.
+Source and extra decision filters are in the filter menu; saved vacancies,
+queue actions, letters and updates remain accessible. Remote vacancy text
+is always plain text in native labels. Unknown locations are explained
+without changing scoring or preparation gates. The offline suite includes
+33 tests covering the new controls and responsive layout.
