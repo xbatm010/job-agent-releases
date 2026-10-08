@@ -1086,7 +1086,7 @@ class JobAgentWindow(QMainWindow):
             self.source_filter_actions[value] = action
         filter_menu.addSeparator()
         self.extra_filter_actions = {}
-        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("Manual queue eligible", "Можно в очередь")]:
+        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("Manual queue eligible", "Можно в очередь")]:
             action = filter_menu.addAction(label)
             action.setCheckable(True)
             action.triggered.connect(lambda checked=False, v=value: self._select_decision_filter(v))
