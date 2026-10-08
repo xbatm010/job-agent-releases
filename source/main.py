@@ -8,7 +8,7 @@ import re
 import hashlib
 import unicodedata
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import quote, urljoin, urlparse, parse_qs, urlencode, urlunparse, unquote
 
 import requests
 from bs4 import BeautifulSoup
@@ -6645,7 +6645,7 @@ async def handle_external_application(page):
 
 def application_confirmation_url(url):
     """Require a recognizable success route, not merely a page redirect."""
-    path = urlparse(str(url or "")).path.lower().rstrip("/")
+    path = unquote(urlparse(str(url or "")).path).lower().rstrip("/")
     if not path:
         return False
     return any(
