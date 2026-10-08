@@ -54,8 +54,8 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         html = "<html><body><h1>Data analytik</h1><p>ss... něco se pokazilo.</p><button>Načíst znovu</button></body></html>"
         response = SimpleNamespace(status_code=200, text=html, url="https://www.startupjobs.cz/nabidky/data-analytik", raise_for_status=lambda: None)
         session = SimpleNamespace(get=lambda *args, **kwargs: response)
-        with patch.multiple(main, SOURCE_JOBS_CZ=False, SOURCE_PRACE_CZ=False, SOURCE_STARTUPJOBS_CZ=True), \\
-                patch.object(main, "browser_discovery_fallback", AsyncMock(return_value=[])), \\
+        with patch.multiple(main, SOURCE_JOBS_CZ=False, SOURCE_PRACE_CZ=False, SOURCE_STARTUPJOBS_CZ=True), \
+                patch.object(main, "browser_discovery_fallback", AsyncMock(return_value=[])), \
                 contextlib.redirect_stdout(io.StringIO()):
             await main.discover_all(session)
         status = json.loads((main.STATE_DIR / "discovery_status.json").read_text())
