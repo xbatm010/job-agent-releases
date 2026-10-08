@@ -11,6 +11,98 @@ from test_scoring import ScoringDefaults, main, vacancy
 
 
 class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
+    async def test_pre_enrichment_prioritizes_entry_roles_and_excludes_senior(self):
+        def item(title, jid, source="jobs.cz"):
+            return {
+                "title": title, "job_id": str(jid), "source": source,
+                "url": f"https://www.jobs.cz/rpd/{jid}/",
+                "location": "Praha",
+            }
+
+        jobs = [item("Java Engineer", i, "startupjobs.cz") for i in range(30)]
+        jobs += [item("Senior Data Analyst", 301), item("Business Analyst", 302)]
+        jobs += [item("AI & Automation Student Support (Part-time)", 303, "prace.cz")]
+        jobs += [item("Junior Data Analyst", 304)]
+        result = main.select_discovery_candidates(jobs, set(), set(), 3)
+        self.assertEqual(
+            [j["job_id"] for j in result],
+            ["304", "303", "302"],
+        )
+        self.assertNotIn("301", [j["job_id"] for j in result])
+        self.assertEqual(
+            [j["job_id"] for j in main.select_discovery_candidates(
+                jobs, {"job:304"}, {"job:303"}, 2
+            )],
+            ["302", "0"],
+        )
+
+    async def test_priority_balances_sources_within_same_relevance_tier(self):
+        jobs = [
+            {"title": "Junior Data Analyst", "job_id": str(i),
+             "source": "jobs.cz", "location": "Praha"}
+            for i in range(10)
+        ]
+        jobs += [
+            {"title": "Junior Data Analyst", "job_id": str(100 + i),
+             "source": "prace.cz", "location": "Praha"}
+            for i in range(2)
+        ]
+        result = main.select_discovery_candidates(jobs, set(), set(), 4)
+        self.assertEqual([j["source"] for j in result], [
+            "jobs.cz", "prace.cz", "jobs.cz", "prace.cz",
+        ])
+
+    async def test_full_detail_scores_determine_shortlist_not_discovery_order(self):
+        initial_order = [
+            {"job_id": str(i), "decision": "SKIP", "score": 90 - i}
+            for i in range(4)
+        ]
+        initial_order += [
+            {"job_id": "review", "decision": "REVIEW", "score": 65},
+            {"job_id": "apply", "decision": "APPLY", "score": 74},
+        ]
+        selected = main.select_review_shortlist(initial_order, 2)
+        self.assertEqual([j["job_id"] for j in selected], ["apply", "review"])
+        self.assertEqual(len(initial_order), 6)
+        self.assertEqual(main.select_review_shortlist(initial_order, 0), [])
+
+    async def test_run_can_select_high_scoring_job_after_old_review_cutoff(self):
+        jobs = [vacancy("Data Analyst", job_id=str(1001 + i)) for i in range(3)]
+        for job in jobs:
+            job["card_text"] = ""
+            job["location"] = "Praha"
+
+        def scored(job):
+            best = job["job_id"] == "1003"
+            return {
+                "score": 89 if best else 15,
+                "decision": "APPLY" if best else "SKIP",
+                "role_class": "target",
+                "reasons": [],
+                "evidence_verified": True,
+            }
+
+        prev = Path.cwd()
+        try:
+            os.chdir(self.state.name)
+            with patch.multiple(main, SEARCH_ONLY=True, MAX_JOBS_TO_REVIEW=1), \
+                    patch.object(main, "discover_all", AsyncMock(return_value=jobs)), \
+                    patch.object(main, "enrich_job", side_effect=lambda j, _: j), \
+                    patch.object(main, "browser_recover_weak_evidence",
+                                 AsyncMock(side_effect=lambda x: x)), \
+                    patch.object(main, "score_job", side_effect=scored), \
+                    patch.object(main, "location_gate",
+                                 return_value=(True, "prague_area", "Praha")), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                await main.main()
+            ranked = json.loads(Path("jobs.json").read_text(encoding="utf-8"))
+        finally:
+            os.chdir(prev)
+
+        self.assertEqual(len(ranked), 1)
+        self.assertEqual(ranked[0]["job_id"], "1003")
+        self.assertEqual(ranked[0]["decision"], "APPLY")
+
     async def test_search_only_saves_apply_without_cv_or_form_preparation(self):
         job = vacancy()
         prepare = AsyncMock()

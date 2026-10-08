@@ -263,6 +263,7 @@ EXPANDED_TITLE_PATTERNS = [
 
 ADJACENT_TITLE_PATTERNS = [
     r"\bit analyst\b",
+    r"\bbusiness\s+analyst\b",
     r"\banalytik.*systém",
     r"\bfinancial analyst\b",
     r"\brisk analyst\b",
@@ -2092,6 +2093,63 @@ def interleave_sources(*groups):
             if i < len(group):
                 out.append(group[i])
     return out
+
+
+def pre_enrichment_relevance_tier(job):
+    """Cheap, title-only relevance gate before requesting a detail page."""
+    title = job.get("actual_title") or job.get("title", "")
+    role = role_class(title)
+    entry = is_entry_role(title)
+    if role == "excluded":
+        return 0
+    if role == "target":
+        return 6 if entry else 4
+    if role == "expanded":
+        return 5 if entry else 3
+    if role == "adjacent":
+        return 3 if entry else 2
+    return 1
+
+
+def select_discovery_candidates(jobs, processed, inactive_ids, limit):
+    """Prioritize entry-level data roles without exhausting one site's quota.
+
+    Keep broad/unknown titles as fallback, but exclude explicit senior roles.
+    Round-robin sources *within* each relevance tier to preserve coverage.
+    Original discovery order is never allowed to determine the review cutoff.
+    """
+    tiers = {}
+    for job in jobs:
+        canonical = canonical_history_key(job)
+        if canonical in processed or canonical in inactive_ids:
+            continue
+        tier = pre_enrichment_relevance_tier(job)
+        if tier == 0:
+            continue
+        source = str(job.get("source", "unknown"))
+        tiers.setdefault(tier, {}).setdefault(source, []).append(job)
+
+    chosen = []
+    for tier in sorted(tiers, reverse=True):
+        source_groups = list(tiers[tier].values())
+        for group in source_groups:
+            group.sort(key=discovery_priority, reverse=True)
+        chosen.extend(interleave_sources(*source_groups))
+        if len(chosen) >= limit:
+            break
+    return chosen[:max(0, limit)]
+
+
+def select_review_shortlist(ranked, limit):
+    """Score the full enriched pool, then keep useful decisions first."""
+    return sorted(
+        ranked,
+        key=lambda j: (
+            str(j.get("decision", "")).upper() == "SKIP",
+            -int(j.get("score", 0)),
+            str(j.get("decision", "")).upper() != "APPLY",
+        ),
+    )[:max(0, limit)]
 
 
 async def discover_all(session):
@@ -7323,11 +7381,13 @@ async def main():
         key for key, value in job_overrides.items()
         if str(value.get("decision", "")).upper() == "INACTIVE"
     }
-    fresh = [
-        j for j in jobs
-        if canonical_history_key(j) not in processed
-        and canonical_history_key(j) not in inactive_ids
-    ][:MAX_JOBS_TO_REVIEW * 3]
+    fresh = select_discovery_candidates(
+        jobs, processed, inactive_ids, MAX_JOBS_TO_REVIEW * 3,
+    )
+    print(
+        f"🎯 Relevance-first enrichment: {len(fresh)} candidate(s) "
+        f"selected from {len(jobs)} discovered"
+    )
 
     enriched = []
     for job in fresh:
@@ -7365,7 +7425,7 @@ async def main():
     )
 
     ranked = []
-    for job in [j for j in deduped if str(job_overrides.get(canonical_history_key(j), {}).get("decision", "")).upper() != "INACTIVE"][:MAX_JOBS_TO_REVIEW]:
+    for job in [j for j in deduped if str(job_overrides.get(canonical_history_key(j), {}).get("decision", "")).upper() != "INACTIVE"]:
         if (
             job.get("source") == "jobs.cz"
             and not job.get("company")
@@ -7424,7 +7484,12 @@ async def main():
 
         ranked.append(job)
 
-    ranked.sort(key=lambda j: (-j["score"], j["decision"] != "APPLY"))
+    scored_count = len(ranked)
+    ranked = select_review_shortlist(ranked, MAX_JOBS_TO_REVIEW)
+    print(
+        f"🎯 Post-evidence shortlist: {len(ranked)} of {scored_count} "
+        "scored candidates retained"
+    )
 
     Path("jobs.json").write_text(
         json.dumps(ranked, ensure_ascii=False, indent=2),
