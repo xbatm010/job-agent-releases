@@ -1857,6 +1857,20 @@ def write_discovery_status(groups=None):
         print(f"⚠️ Could not save source diagnostics: {type(exc).__name__}")
 
 
+def startupjobs_incomplete_page(html):
+    """Detect a failed/loading StartupJobs listing without claiming zero jobs."""
+    soup = BeautifulSoup(html, "html.parser")
+    if soup.select('a[href*="/nabidka/"]'):
+        return False
+    text = clean(soup.get_text(" ", strip=True)).lower()
+    return (
+        "něco se pokazilo" in text
+        or "nactist znovu" in normalize_key_text(text)
+        or "načíst znovu" in text
+        or "vysněná práce" in text
+    )
+
+
 def discover_startupjobs_cz(session):
     if not SOURCE_STARTUPJOBS_CZ:
         return []
@@ -1868,6 +1882,8 @@ def discover_startupjobs_cz(session):
             r = session.get(url, timeout=20, headers=discovery_headers())
             r.raise_for_status()
             parsed = parse_startupjobs_search(r.text, query)
+            if not parsed and startupjobs_incomplete_page(r.text):
+                discovery_failure("startupjobs.cz", "HTTP listing incomplete or failed to load")
             detail = (
                 f"HTTP {r.status_code}; parsed={len(parsed)}; "
                 f"vacancy_links={len(BeautifulSoup(r.text, 'html.parser').select('a[href*=\"/nabidka/\"]'))}; "

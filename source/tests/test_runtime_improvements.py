@@ -50,6 +50,18 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertIn("HTTP 200; parsed=0", status["sources"]["startupjobs.cz"]["details"][0])
         self.assertIn("no parsed vacancies", log.getvalue())
 
+    async def test_startupjobs_failed_listing_is_not_reported_as_empty(self):
+        html = "<html><body><h1>Data analytik</h1><p>ss... něco se pokazilo.</p><button>Načíst znovu</button></body></html>"
+        response = SimpleNamespace(status_code=200, text=html, url="https://www.startupjobs.cz/nabidky/data-analytik", raise_for_status=lambda: None)
+        session = SimpleNamespace(get=lambda *args, **kwargs: response)
+        with patch.multiple(main, SOURCE_JOBS_CZ=False, SOURCE_PRACE_CZ=False, SOURCE_STARTUPJOBS_CZ=True), \
+                patch.object(main, "browser_discovery_fallback", AsyncMock(return_value=[])), \
+                contextlib.redirect_stdout(io.StringIO()):
+            await main.discover_all(session)
+        status = json.loads((main.STATE_DIR / "discovery_status.json").read_text())
+        self.assertEqual(status["sources"]["startupjobs.cz"]["status"], "error")
+        self.assertTrue(any("incomplete" in d for d in status["sources"]["startupjobs.cz"]["details"]))
+
     async def test_source_failure_is_not_reported_as_successful_empty_search(self):
         with patch.multiple(main, DISCOVERY_NOTES={}, DISCOVERY_FAILURES={}, SOURCE_JOBS_CZ=True):
             main.discovery_failure("jobs.cz", "Timeout")
