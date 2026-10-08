@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 32,
-  "version": "2.9.4",
+  "publish": true,
+  "request_id": 33,
+  "version": "2.9.5",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent 2.9.4 beta adds safe local database cleanup: manually delete one vacancy or bulk-remove entries whose latest saved snapshot is older than 30, 60, 90 or 180 days. Preview affected counts and confirm; preserve submitted, favorite and queued entries plus all applications history. A timestamped backup is saved locally before snapshots are removed. Permanent INACTIVE tombstones prevent deleted vacancies from returning in the Dashboard or after a new search. The existing reversible inactive archive is retained and its filter is now accessible in the UI. Archived/deleted IDs are skipped before browser enrichment, reducing wasted work. 42 offline regression tests passed in GitHub Actions. Cover-letter behavior is unchanged.",
+  "notes": "Job Agent v2.9.5 beta improves relevance-first vacancy discovery: prioritize junior, internship and trainee data/IT roles before detail-page enrichment; skip clearly excluded senior postings; interleave sources within priority tiers to preserve Jobs.cz, Prace.cz and StartupJobs.cz coverage; score all eligible deduplicated results in the bounded enrichment pool before selecting the best 36 for review, rather than cutting off by original source order. English Business Analyst is now recognized as an adjacent role, not automatically classified as a Data Analyst. Submitted/archived vacancies remain excluded, and final Submit remains manual. Verified with 46 successful offline regression tests in GitHub Actions.",
   "last_published": "2.9.4",
   "last_sha256": "d3715a5391b4111abba68860d02330efe1ba6088ecdb5e0d7500bfee6698d63d"
 }
