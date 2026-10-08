@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 33,
   "version": "2.9.5",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent v2.9.5 beta improves relevance-first vacancy discovery: prioritize junior, internship and trainee data/IT roles before detail-page enrichment; skip clearly excluded senior postings; interleave sources within priority tiers to preserve Jobs.cz, Prace.cz and StartupJobs.cz coverage; score all eligible deduplicated results in the bounded enrichment pool before selecting the best 36 for review, rather than cutting off by original source order. English Business Analyst is now recognized as an adjacent role, not automatically classified as a Data Analyst. Submitted/archived vacancies remain excluded, and final Submit remains manual. Verified with 46 successful offline regression tests in GitHub Actions.",
-  "last_published": "2.9.4",
-  "last_sha256": "d3715a5391b4111abba68860d02330efe1ba6088ecdb5e0d7500bfee6698d63d"
+  "last_published": "2.9.5",
+  "last_sha256": "bfb70148c5bdebe704f0d7aae5c53723c725b0d64e023932f2f7c33f71c52daa"
 }
