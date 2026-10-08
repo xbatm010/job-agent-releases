@@ -1,4 +1,7 @@
 import csv
+import shutil
+import tempfile
+from datetime import datetime, timedelta
 from html import escape
 from desktop_theme import LIGHT_STYLE, DECISION_LABELS, display_decision
 from desktop_widgets import VacancyDelegate, VacancyDetail, icon_pixmap, ui_icon, SOURCE_NAMES
@@ -30,6 +33,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QInputDialog,
     QComboBox,
     QProgressBar,
     QMainWindow,
@@ -363,6 +367,117 @@ def processed_count() -> int:
     return len(unique)
 
 
+def parse_vacancy_saved_at(value):
+    """Return local naive timestamp, or None for old/invalid undated records."""
+    if not value:
+        return None
+    try:
+        date = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if date.tzinfo is not None:
+            date = date.astimezone().replace(tzinfo=None)
+        return date
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def protected_vacancy(record, overrides=None, submitted_ids=None):
+    """Never silently purge submitted, favorited or queued applications."""
+    jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+    override = (overrides or {}).get(jid, {})
+    decision = str(override.get("decision", "")).upper()
+    if jid in (submitted_ids or set()):
+        return True
+    if str(record.get("status", "")).upper() in TERMINAL_STATUSES:
+        return True
+    if decision in {"INTERESTING", "MANUAL_APPLY"} or bool(record.get("manual_queue")):
+        return True
+    return False
+
+
+def old_vacancy_ids(records, days, now=None, overrides=None, submitted_ids=None):
+    """Use the latest saved snapshot, not a guessed posting date."""
+    cutoff = (now or datetime.now()) - timedelta(days=int(days))
+    return {
+        canonical_local_job_id(row.get("job_id", ""), row.get("url", ""))
+        for row in records
+        if parse_vacancy_saved_at(row.get("saved_at")) is not None
+        and parse_vacancy_saved_at(row.get("saved_at")) < cutoff
+        and not protected_vacancy(row, overrides, submitted_ids)
+        and canonical_local_job_id(row.get("job_id", ""), row.get("url", ""))
+    }
+
+
+def purge_vacancy_records(job_ids):
+    """Back up and remove snapshots, preserve applications.csv, block rediscovery.
+
+    Returns (vacancies_hidden, snapshot_rows_removed, backup_path). Invalid JSON
+    lines are preserved unchanged. If a snapshot is absent, an INACTIVE tombstone
+    still prevents a legacy history fallback from showing the vacancy.
+    """
+    ids = {canonical_local_job_id(jid) for jid in job_ids}
+    ids.discard("")
+    if not ids:
+        return 0, 0, None
+
+    overrides = load_job_overrides()
+    submitted = terminal_job_ids()
+    records = {
+        canonical_local_job_id(row.get("job_id", ""), row.get("url", "")): row
+        for row in load_vacancy_records()
+    }
+    for jid in ids:
+        if jid in submitted or (jid in records and protected_vacancy(records[jid], overrides, submitted)):
+            raise ValueError(f"Запись {jid} защищена: отклик, избранное или очередь.")
+
+    source_lines = []
+    if VACANCIES_FILE.exists():
+        source_lines = VACANCIES_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
+    retained = []
+    removed_rows = 0
+    for line in source_lines:
+        try:
+            row = json.loads(line)
+            jid = canonical_local_job_id(row.get("job_id", ""), row.get("url", ""))
+        except (ValueError, AttributeError, TypeError):
+            retained.append(line)
+            continue
+        if jid in ids:
+            removed_rows += 1
+        else:
+            retained.append(line)
+
+    # No history file is rewritten or removed. The backup is retained locally.
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    backups = VACANCIES_FILE.parent / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    backup_path = None
+    if VACANCIES_FILE.exists():
+        backup_path = backups / f"vacancies-{stamp}.jsonl"
+        shutil.copy2(VACANCIES_FILE, backup_path)
+
+    data = load_job_overrides()
+    for jid in ids:
+        data[jid] = {"decision": "INACTIVE", "updated_at": datetime.now().isoformat(timespec="seconds"),
+                     "reason": "manually_deleted"}
+    OVERRIDES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    def atomic_write(path, content):
+        name = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                             prefix=f".{path.name}-", delete=False) as tmp:
+                name = Path(tmp.name)
+                tmp.write(content)
+            os.replace(name, path)
+        finally:
+            if name is not None and name.exists():
+                name.unlink()
+
+    atomic_write(OVERRIDES_FILE, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    if source_lines:
+        atomic_write(VACANCIES_FILE, "".join(retained))
+    return len(ids), removed_rows, backup_path
+
+
 def load_vacancy_records() -> list[dict]:
     latest = {}
 
@@ -391,6 +506,13 @@ def load_vacancy_records() -> list[dict]:
         except Exception:
             pass
 
+    # A purged vacancy may still have historical application rows.
+    # Keep them in applications.csv without recreating the removed Dashboard item.
+    inactive = {
+        key for key, value in load_job_overrides().items()
+        if str(value.get("decision", "")).upper() == "INACTIVE"
+    }
+
     # Backward-compatible fallback for jobs recorded before Desktop 2.2.
     if HISTORY_FILE.exists():
         try:
@@ -406,7 +528,7 @@ def load_vacancy_records() -> list[dict]:
                     )
                     if not jid:
                         continue
-                    if jid not in latest:
+                    if jid not in latest and jid not in inactive:
                         copied = dict(row)
                         copied["job_id"] = jid
                         latest[jid] = copied
@@ -964,13 +1086,15 @@ class JobAgentWindow(QMainWindow):
             self.source_filter_actions[value] = action
         filter_menu.addSeparator()
         self.extra_filter_actions = {}
-        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("Manual queue eligible", "Можно в очередь")]:
+        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("Manual queue eligible", "Можно в очередь")]:
             action = filter_menu.addAction(label)
             action.setCheckable(True)
             action.triggered.connect(lambda checked=False, v=value: self._select_decision_filter(v))
             self.extra_filter_actions[value] = action
         filter_menu.addSeparator()
         filter_menu.addAction("Сбросить фильтры", self._show_all_vacancies)
+        filter_menu.addSeparator()
+        filter_menu.addAction("Очистить старые вакансии…", self._cleanup_old_vacancies)
         self.filter_menu_btn.setMenu(filter_menu)
         filter_row.addWidget(self.filter_menu_btn)
         self.dashboard_count = QLabel("0 вакансий")
@@ -1081,6 +1205,7 @@ class JobAgentWindow(QMainWindow):
             ("Сбросить отметку", self._clear_selected_override),
             ("Посмотреть письмо", self._show_selected_cover_letter),
             ("Копировать письмо", self._copy_selected_cover_letter),
+            ("Удалить запись из базы…", self._delete_selected_vacancy),
         ]:
             action = menu.addAction(label)
             action.triggered.connect(callback)
@@ -1486,8 +1611,10 @@ class JobAgentWindow(QMainWindow):
             "Перед заполнением агент повторно проверит вакансию"
         )
         for index, action in enumerate(self.detail_actions):
-            if index >= 7:
+            if 7 <= index <= 8:
                 action.setEnabled(bool(record.get("cover_letter")))
+            elif index == 9:
+                action.setEnabled(not running and not terminal)
             else:
                 action.setEnabled(not running and not terminal)
         inactive = str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() == "INACTIVE"
@@ -1801,6 +1928,84 @@ class JobAgentWindow(QMainWindow):
                 "Clear override",
                 "This vacancy has no Dashboard override.",
             )
+
+    def _delete_selected_vacancy(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        if self.agent_process and self.agent_process.is_alive():
+            QMessageBox.warning(self, "Удаление", "Дождись завершения поиска.")
+            return
+        jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+        if protected_vacancy(record, load_job_overrides(), terminal_job_ids()):
+            QMessageBox.information(
+                self, "Удаление", "Отправленные, избранные и стоящие в очереди вакансии защищены от удаления."
+            )
+            return
+        answer = QMessageBox.question(
+            self, "Удалить запись из базы?",
+            f"Удалить «{record.get('title', '')}» из локальной базы?\n\n"
+            "История откликов сохранится. Создаётся резервная копия вакансий. "
+            "Вакансия не вернётся при следующем поиске. "
+            "Для восстановления удалённой записи понадобится резервная копия.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            hidden, rows, backup = purge_vacancy_records({jid})
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Удаление не выполнено", str(exc))
+            return
+        self._append_log(f"Удалена вакансия: {jid}; строк={rows}; backup={backup or '—'}")
+        self._refresh_dashboard()
+        QMessageBox.information(self, "Удалено", f"Удалено из базы: {hidden}. Резервная копия: {backup or 'нет'}")
+
+    def _cleanup_old_vacancies(self):
+        if self.agent_process and self.agent_process.is_alive():
+            QMessageBox.warning(self, "Очистка", "Дождись завершения поиска.")
+            return
+        choices = ["Старше 30 дней", "Старше 60 дней", "Старше 90 дней", "Старше 180 дней"]
+        selected, ok = QInputDialog.getItem(
+            self, "Очистка старых вакансий", "Удалить локальные записи:", choices, 2, False,
+        )
+        if not ok:
+            return
+        days = [30, 60, 90, 180][choices.index(selected)]
+        records = load_vacancy_records()
+        overrides = load_job_overrides()
+        submitted = terminal_job_ids()
+        ids = old_vacancy_ids(records, days, overrides=overrides, submitted_ids=submitted)
+        if not ids:
+            QMessageBox.information(
+                self, "Очистка", "Подходящих старых вакансий нет. Записи без даты сохраняются."
+            )
+            return
+        protected_count = sum(protected_vacancy(r, overrides, submitted) for r in records)
+        answer = QMessageBox.question(
+            self, "Подтвердить очистку",
+            f"Найдено {len(ids)} вакансий старше {days} дней.\n"
+            f"Защищено от удаления: {protected_count}.\n\n"
+            "Будут удалены только сохранённые записи вакансий. "
+            "История откликов не изменится. Создаётся резервная копия. "
+            "Удалённые вакансии не вернутся после поиска, а их восстановление "
+            "потребует резервной копии. Продолжить?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            hidden, rows, backup = purge_vacancy_records(ids)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Ошибка очистки", str(exc))
+            return
+        self._refresh_dashboard()
+        self._append_log(f"Очистка > {days} дней: вакансий={hidden}, строк={rows}, backup={backup or '—'}")
+        QMessageBox.information(
+            self, "Очистка завершена",
+            f"Удалено вакансий: {hidden}\nСтрок снимков: {rows}\n"
+            f"Резервная копия: {backup or 'нет'}",
+        )
 
     def _archive_selected_vacancy(self):
         record = self._selected_dashboard_record()
