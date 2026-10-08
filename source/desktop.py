@@ -1486,16 +1486,18 @@ class JobAgentWindow(QMainWindow):
             "Перед заполнением агент повторно проверит вакансию"
         )
         for index, action in enumerate(self.detail_actions):
-            if index >= 5:
+            if index >= 7:
                 action.setEnabled(bool(record.get("cover_letter")))
             else:
                 action.setEnabled(not running and not terminal)
         inactive = str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() == "INACTIVE"
         self.detail_actions[4].setEnabled(not running and not inactive)
         self.detail_actions[5].setEnabled(not running and inactive)
+        for index in (1, 2, 3, 6):
+            self.detail_actions[index].setEnabled(not running and not terminal and not inactive)
         self.prepare_now_btn.setEnabled(self.prepare_now_btn.isEnabled() and not inactive)
         self.detail_actions[0].setEnabled(
-            not running and not terminal and supported
+            not running and not terminal and not inactive and supported
             and record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
         )
 
