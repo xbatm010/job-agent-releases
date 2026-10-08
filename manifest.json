@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.9.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.0/job-agent-2.9.0-macos.zip",
-      "sha256": "0eede81f7a01a32ed70b20c60c21cdbcd842449759b56ee962930c1d248f7693",
-      "notes": "Job Agent 2.9.0 introduces the selected light desktop design: sidebar navigation, a readable vacancy table, a detail inspector with scores and reasons, separate profile/settings/update controls, favorites, translated filters and one-click log copying. Narrow windows place details below the table. Desktop now defaults to search-only: search, score and save vacancies without a CV or application forms, then prepare a selected vacancy explicitly. Uncheck 'Только поиск' for search-and-prepare runs. Existing contacts, CV paths, custom thresholds and confirmed history are preserved. Source badges distinguish results, partial errors, loading failures and zero parsed vacancies; StartupJobs diagnostics include HTTP and browser results. Location-only employer values such as Prague are rejected and explicit entry vacancies receive browser-evidence priority. Sent vacancies cannot re-enter the ready-to-apply filter. Final employer Submit remains manual. Validation includes 29 offline tests with actual Qt widgets, prior smoke checks and wide/narrow layout inspection.",
+      "version": "2.9.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.1/job-agent-2.9.1-macos.zip",
+      "sha256": "62a7127d8dd73b211758942aa07878d170dcfe496132359f8e1964f858c36d28",
+      "notes": "Job Agent 2.9.1 brings the light desktop much closer to the selected concept: header statistics, vector sidebar icons, one source-health strip, counted filter buttons, three-line vacancy rows with source marks and colored score/status pills, a native detail card with match checks and skill tags, and a run journal under the table. The full description expands inside the card. Source and extra status filters remain available in the filter menu; profile, updates, favorites, queue actions and letters are retained. Native labels render vacancy content as plain text; unknown-location cases show an explicit explanation. Scoring thresholds, search-only behavior and manual final Submit are unchanged. Verified with 33 offline tests, including real Qt widget actions and responsive layout, and render inspection at desktop and narrow widths.",
       "min_version": "2.3.1"
     }
   }
