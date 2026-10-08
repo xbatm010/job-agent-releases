@@ -53,7 +53,8 @@ class DesktopTests(unittest.TestCase):
         self.overrides["job:2000000001"] = {"decision": "INACTIVE"}
         self.window._refresh_dashboard()
         self.assertNotIn("job:2000000001", [r["job_id"] for r in self.window.dashboard_records])
-        self.filter("INACTIVE")
+        self.assertIn("INACTIVE", self.window.extra_filter_actions)
+        self.window.extra_filter_actions["INACTIVE"].trigger()
         self.assertEqual([r["job_id"] for r in self.window.dashboard_records], ["job:2000000001"])
         self.window.dashboard_table.selectRow(0)
         self.assertFalse(self.window.prepare_now_btn.isEnabled())
