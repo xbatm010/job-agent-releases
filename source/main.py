@@ -7338,7 +7338,7 @@ async def main():
 
     ranked = []
     job_overrides = load_job_overrides()
-    for job in deduped[:MAX_JOBS_TO_REVIEW]:
+    for job in [j for j in deduped if str(job_overrides.get(canonical_history_key(j), {}).get("decision", "")).upper() != "INACTIVE"][:MAX_JOBS_TO_REVIEW]:
         if (
             job.get("source") == "jobs.cz"
             and not job.get("company")
