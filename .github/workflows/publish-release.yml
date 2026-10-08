@@ -237,8 +237,10 @@ jobs:
           assert 'saved.pop("source_indeed", None)' in desktop
           assert '"indeed.com" in url' in desktop
           assert "Manual 65–72" not in desktop
-          assert "Manual queue ≥ threshold" in desktop
-          assert "score >= self.manual_queue_spin.value()" in desktop
+          assert "Manual queue eligible" in desktop
+          assert "score >= self.manual_queue_spin.value()" not in desktop
+          assert "def _archive_selected_vacancy" in desktop
+          assert "def _restore_selected_vacancy" in desktop
           assert 'APP_CHANNEL = str(VERSION_INFO.get("channel", "stable"))' in desktop
           assert '"update_channel": APP_CHANNEL' in desktop
           assert '"update_channel_explicit": False' in desktop
@@ -295,7 +297,7 @@ jobs:
           assert not main.manual_review_apply_eligible(safe, False)
 
           low = dict(safe, score=64)
-          assert not main.manual_review_apply_eligible(low, True)
+          assert main.manual_review_apply_eligible(low, True)
 
           card = main.BeautifulSoup(
               '<article><h2>Data Analyst</h2>'
