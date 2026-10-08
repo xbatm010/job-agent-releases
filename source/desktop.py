@@ -419,6 +419,16 @@ def purge_vacancy_records(job_ids):
     if not ids:
         return 0, 0, None
 
+    overrides = load_job_overrides()
+    submitted = terminal_job_ids()
+    records = {
+        canonical_local_job_id(row.get("job_id", ""), row.get("url", "")): row
+        for row in load_vacancy_records()
+    }
+    for jid in ids:
+        if jid in submitted or (jid in records and protected_vacancy(records[jid], overrides, submitted)):
+            raise ValueError(f"Запись {jid} защищена: отклик, избранное или очередь.")
+
     source_lines = []
     if VACANCIES_FILE.exists():
         source_lines = VACANCIES_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
