@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.9.1",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.1/job-agent-2.9.1-macos.zip",
-      "sha256": "62a7127d8dd73b211758942aa07878d170dcfe496132359f8e1964f858c36d28",
-      "notes": "Job Agent 2.9.1 brings the light desktop much closer to the selected concept: header statistics, vector sidebar icons, one source-health strip, counted filter buttons, three-line vacancy rows with source marks and colored score/status pills, a native detail card with match checks and skill tags, and a run journal under the table. The full description expands inside the card. Source and extra status filters remain available in the filter menu; profile, updates, favorites, queue actions and letters are retained. Native labels render vacancy content as plain text; unknown-location cases show an explicit explanation. Scoring thresholds, search-only behavior and manual final Submit are unchanged. Verified with 33 offline tests, including real Qt widget actions and responsive layout, and render inspection at desktop and narrow widths.",
+      "version": "2.9.2",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.2/job-agent-2.9.2-macos.zip",
+      "sha256": "45b6dd130641c68b67b8075ed0266121383577ca570a3d252556bdd5e7a4d07b",
+      "notes": "Job Agent 2.9.2 beta: manual REVIEW preparation no longer blocked by the score-65 threshold; supported-source, verified-evidence, experience, location and manual final-submit protections remain in place. StartupJobs detects incomplete/error listing pages and reports source failures accurately instead of claiming no vacancies. A new reversible Inactive Vacancies archive hides closed jobs from active results and subsequent search/preparation runs, with a restore option and preserved application history. Release smoke checks and regression tests updated.",
       "min_version": "2.3.1"
     }
   }
