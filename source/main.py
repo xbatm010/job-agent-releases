@@ -7316,9 +7316,17 @@ async def main():
             f"priority={discovery_priority(job)}"
         )
 
+    # Archive/delete tombstones apply before enrichment and browser recovery,
+    # not only at the final scoring stage. This saves limited browser slots.
+    job_overrides = load_job_overrides()
+    inactive_ids = {
+        key for key, value in job_overrides.items()
+        if str(value.get("decision", "")).upper() == "INACTIVE"
+    }
     fresh = [
         j for j in jobs
         if canonical_history_key(j) not in processed
+        and canonical_history_key(j) not in inactive_ids
     ][:MAX_JOBS_TO_REVIEW * 3]
 
     enriched = []
@@ -7357,7 +7365,6 @@ async def main():
     )
 
     ranked = []
-    job_overrides = load_job_overrides()
     for job in [j for j in deduped if str(job_overrides.get(canonical_history_key(j), {}).get("decision", "")).upper() != "INACTIVE"][:MAX_JOBS_TO_REVIEW]:
         if (
             job.get("source") == "jobs.cz"
