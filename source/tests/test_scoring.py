@@ -60,6 +60,22 @@ class ScoringDefaults:
 
 
 class ExpandedScoringTests(ScoringDefaults, unittest.TestCase):
+
+    def test_manual_review_score_does_not_block_explicit_preparation(self):
+        job = vacancy()
+        job.update({
+            "source": "jobs.cz", "decision": "REVIEW", "score": 42,
+            "role_class": "expanded", "evidence_quality": "strong",
+            "hard_experience": False,
+        })
+        self.assertTrue(main.manual_review_apply_eligible(job, True))
+        self.assertFalse(main.manual_review_apply_eligible(job, False))
+        job["evidence_quality"] = "weak"
+        self.assertFalse(main.manual_review_apply_eligible(job, True))
+        job["evidence_quality"] = "strong"
+        job["source"] = "startupjobs.cz"
+        self.assertFalse(main.manual_review_apply_eligible(job, True))
+
     def test_logged_score_shape_qualifies_with_entry_floor(self):
         result = main.score_job(vacancy())
         self.assertEqual(result["score"], 76)

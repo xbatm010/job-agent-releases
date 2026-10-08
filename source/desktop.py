@@ -929,7 +929,7 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_search.addAction(ui_icon("search", "#69758d", 20), QLineEdit.LeadingPosition)
         self.dashboard_search.setClearButtonEnabled(True)
         self.dashboard_decision_filter = QComboBox(self)
-        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue ≥ threshold")]:
+        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue eligible")]:
             self.dashboard_decision_filter.addItem(label, value)
         self.dashboard_decision_filter.hide()
         self.dashboard_source_filter = QComboBox(self)
@@ -964,7 +964,7 @@ class JobAgentWindow(QMainWindow):
             self.source_filter_actions[value] = action
         filter_menu.addSeparator()
         self.extra_filter_actions = {}
-        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("Manual queue ≥ threshold", "Можно в очередь")]:
+        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("Manual queue eligible", "Можно в очередь")]:
             action = filter_menu.addAction(label)
             action.setCheckable(True)
             action.triggered.connect(lambda checked=False, v=value: self._select_decision_filter(v))
@@ -1243,7 +1243,7 @@ class JobAgentWindow(QMainWindow):
         scoring_layout.addRow("Junior / Intern ≥", self.entry_spin)
         scoring_layout.addRow("Expanded role ≥", self.expanded_spin)
         scoring_layout.addRow("REVIEW ≥", self.review_spin)
-        scoring_layout.addRow("Manual queue ≥", self.manual_queue_spin)
+        self.manual_queue_spin.hide()  # Retain stored legacy setting, not a user-facing score gate
         tabs.addTab(scoring_tab, "Оценка")
 
         paths_tab = QWidget()
@@ -1474,7 +1474,7 @@ class JobAgentWindow(QMainWindow):
         except (TypeError, ValueError):
             score = 0
         eligible = record.get("decision") == "APPLY" or (
-            record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
+            record.get("decision") == "REVIEW"
         )
         enabled = not running and not terminal and supported and eligible and decision != "SKIP"
         self.prepare_now_btn.setEnabled(enabled)
@@ -1490,7 +1490,7 @@ class JobAgentWindow(QMainWindow):
                 action.setEnabled(not running and not terminal)
         self.detail_actions[0].setEnabled(
             not running and not terminal and supported
-            and record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
+            and record.get("decision") == "REVIEW"
         )
 
     def _dashboard_record_matches_filters(self, record, overrides, include_decision=True):
@@ -1530,15 +1530,8 @@ class JobAgentWindow(QMainWindow):
             return True
         if selected == "SUBMITTED":
             return status in TERMINAL_STATUSES
-        if selected == "Manual queue ≥ threshold":
-            try:
-                score = int(float(record.get("score", 0) or 0))
-            except Exception:
-                score = 0
-            return (
-                score >= self.manual_queue_spin.value()
-                and display_decision in {"REVIEW", "QUEUED"}
-            )
+        if selected == "Manual queue eligible":
+            return display_decision in {"REVIEW", "QUEUED"}
         return display_decision == selected
 
     def _refresh_dashboard(self):
@@ -1654,14 +1647,6 @@ class JobAgentWindow(QMainWindow):
             )
             return
 
-        if score < floor:
-            QMessageBox.information(
-                self,
-                "Queue application",
-                f"This vacancy has score {score}. Manual queue requires at least {floor}.",
-            )
-            return
-
         reply = QMessageBox.question(
             self,
             "Queue application",
@@ -1729,15 +1714,14 @@ class JobAgentWindow(QMainWindow):
         decision = str(record.get("decision", "")).upper().strip()
 
         allowed = decision == "APPLY" or override == "MANUAL_APPLY"
-        if decision == "REVIEW" and score >= self.manual_queue_spin.value():
+        if decision == "REVIEW":
             allowed = True
 
         if not allowed:
             QMessageBox.information(
                 self,
                 "Prepare now",
-                "Prepare now is available for APPLY jobs or REVIEW jobs "
-                f"with score ≥ {self.manual_queue_spin.value()}. "
+                "Prepare now is available for APPLY or REVIEW jobs. "
                 "The agent will re-check the vacancy before opening the form.",
             )
             return
@@ -1966,9 +1950,6 @@ class JobAgentWindow(QMainWindow):
 
         if s["review"] > s["min_apply"]:
             return "REVIEW threshold should not exceed target APPLY threshold."
-
-        if not (s["review"] <= s["manual_queue_min"] <= s["min_apply"]):
-            return "Manual queue threshold should be between REVIEW and target APPLY thresholds."
 
         return ""
 

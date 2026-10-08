@@ -1576,15 +1576,11 @@ def cross_site_dedupe_preference(job):
 
 
 def manual_review_apply_eligible(job, loc_allowed):
-    try:
-        score = int(job.get("score", 0))
-    except Exception:
-        score = 0
-
+    # Manual preparation is an explicit user choice; do not gate it by score.
+    # Source, evidence, experience and location safety checks remain active.
     return (
         application_source_supported(job)
         and str(job.get("decision", "")).upper() == "REVIEW"
-        and score >= MANUAL_REVIEW_APPLY_MIN_SCORE
         and str(job.get("role_class", "")).lower() in {"target", "expanded"}
         and str(job.get("evidence_quality", "")).lower() == "strong"
         and not bool(job.get("hard_experience"))
