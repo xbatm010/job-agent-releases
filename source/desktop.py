@@ -929,7 +929,7 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_search.addAction(ui_icon("search", "#69758d", 20), QLineEdit.LeadingPosition)
         self.dashboard_search.setClearButtonEnabled(True)
         self.dashboard_decision_filter = QComboBox(self)
-        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue ≥ threshold")]:
+        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue eligible")]:
             self.dashboard_decision_filter.addItem(label, value)
         self.dashboard_decision_filter.hide()
         self.dashboard_source_filter = QComboBox(self)
@@ -1243,7 +1243,7 @@ class JobAgentWindow(QMainWindow):
         scoring_layout.addRow("Junior / Intern ≥", self.entry_spin)
         scoring_layout.addRow("Expanded role ≥", self.expanded_spin)
         scoring_layout.addRow("REVIEW ≥", self.review_spin)
-        scoring_layout.addRow("Manual queue ≥ (legacy)", self.manual_queue_spin)
+        self.manual_queue_spin.hide()  # Retain stored legacy setting, not a user-facing score gate
         tabs.addTab(scoring_tab, "Оценка")
 
         paths_tab = QWidget()
@@ -1530,15 +1530,8 @@ class JobAgentWindow(QMainWindow):
             return True
         if selected == "SUBMITTED":
             return status in TERMINAL_STATUSES
-        if selected == "Manual queue ≥ threshold":
-            try:
-                score = int(float(record.get("score", 0) or 0))
-            except Exception:
-                score = 0
-            return (
-                score >= self.manual_queue_spin.value()
-                and display_decision in {"REVIEW", "QUEUED"}
-            )
+        if selected == "Manual queue eligible":
+            return display_decision in {"REVIEW", "QUEUED"}
         return display_decision == selected
 
     def _refresh_dashboard(self):
@@ -1957,9 +1950,6 @@ class JobAgentWindow(QMainWindow):
 
         if s["review"] > s["min_apply"]:
             return "REVIEW threshold should not exceed target APPLY threshold."
-
-        if not (s["review"] <= s["manual_queue_min"] <= s["min_apply"]):
-            return "Manual queue threshold should be between REVIEW and target APPLY thresholds."
 
         return ""
 
