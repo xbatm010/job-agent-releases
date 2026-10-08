@@ -263,6 +263,7 @@ EXPANDED_TITLE_PATTERNS = [
 
 ADJACENT_TITLE_PATTERNS = [
     r"\bit analyst\b",
+    r"\bbusiness\s+analyst\b",
     r"\banalytik.*systém",
     r"\bfinancial analyst\b",
     r"\brisk analyst\b",
