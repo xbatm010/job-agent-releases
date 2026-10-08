@@ -66,6 +66,43 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(initial_order), 6)
         self.assertEqual(main.select_review_shortlist(initial_order, 0), [])
 
+    async def test_run_can_select_high_scoring_job_after_old_review_cutoff(self):
+        jobs = [vacancy("Data Analyst", job_id=str(1001 + i)) for i in range(3)]
+        for job in jobs:
+            job["card_text"] = ""
+            job["location"] = "Praha"
+
+        def scored(job):
+            best = job["job_id"] == "1003"
+            return {
+                "score": 89 if best else 15,
+                "decision": "APPLY" if best else "SKIP",
+                "role_class": "target",
+                "reasons": [],
+                "evidence_verified": True,
+            }
+
+        prev = Path.cwd()
+        try:
+            os.chdir(self.state.name)
+            with patch.multiple(main, SEARCH_ONLY=True, MAX_JOBS_TO_REVIEW=1), \
+                    patch.object(main, "discover_all", AsyncMock(return_value=jobs)), \
+                    patch.object(main, "enrich_job", side_effect=lambda j, _: j), \
+                    patch.object(main, "browser_recover_weak_evidence",
+                                 AsyncMock(side_effect=lambda x: x)), \
+                    patch.object(main, "score_job", side_effect=scored), \
+                    patch.object(main, "location_gate",
+                                 return_value=(True, "prague_area", "Praha")), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                await main.main()
+            ranked = json.loads(Path("jobs.json").read_text(encoding="utf-8"))
+        finally:
+            os.chdir(prev)
+
+        self.assertEqual(len(ranked), 1)
+        self.assertEqual(ranked[0]["job_id"], "1003")
+        self.assertEqual(ranked[0]["decision"], "APPLY")
+
     async def test_search_only_saves_apply_without_cv_or_form_preparation(self):
         job = vacancy()
         prepare = AsyncMock()
