@@ -47,6 +47,19 @@ class DesktopTests(unittest.TestCase):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
 
+    def test_inactive_vacancy_hidden_and_restorable_in_filter(self):
+        self.overrides["job:2000000001"] = {"decision": "INACTIVE"}
+        self.window._refresh_dashboard()
+        self.assertNotIn("job:2000000001", [r["job_id"] for r in self.window.dashboard_records])
+        self.filter("INACTIVE")
+        self.assertEqual([r["job_id"] for r in self.window.dashboard_records], ["job:2000000001"])
+        self.window.dashboard_table.selectRow(0)
+        self.assertFalse(self.window.prepare_now_btn.isEnabled())
+        self.assertTrue(self.window.detail_actions[5].isEnabled())
+        self.overrides.pop("job:2000000001")
+        self.filter("All")
+        self.assertIn("job:2000000001", [r["job_id"] for r in self.window.dashboard_records])
+
     def test_history_and_translated_filters_keep_submitted_out_of_apply(self):
         self.filter("APPLY")
         self.assertEqual([r["job_id"] for r in self.window.dashboard_records], ["job:2000000001"])
