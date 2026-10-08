@@ -1243,7 +1243,7 @@ class JobAgentWindow(QMainWindow):
         scoring_layout.addRow("Junior / Intern ≥", self.entry_spin)
         scoring_layout.addRow("Expanded role ≥", self.expanded_spin)
         scoring_layout.addRow("REVIEW ≥", self.review_spin)
-        scoring_layout.addRow("Manual queue ≥", self.manual_queue_spin)
+        scoring_layout.addRow("Manual queue ≥ (legacy)", self.manual_queue_spin)
         tabs.addTab(scoring_tab, "Оценка")
 
         paths_tab = QWidget()
@@ -1474,7 +1474,7 @@ class JobAgentWindow(QMainWindow):
         except (TypeError, ValueError):
             score = 0
         eligible = record.get("decision") == "APPLY" or (
-            record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
+            record.get("decision") == "REVIEW"
         )
         enabled = not running and not terminal and supported and eligible and decision != "SKIP"
         self.prepare_now_btn.setEnabled(enabled)
@@ -1490,7 +1490,7 @@ class JobAgentWindow(QMainWindow):
                 action.setEnabled(not running and not terminal)
         self.detail_actions[0].setEnabled(
             not running and not terminal and supported
-            and record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
+            and record.get("decision") == "REVIEW"
         )
 
     def _dashboard_record_matches_filters(self, record, overrides, include_decision=True):
@@ -1654,14 +1654,6 @@ class JobAgentWindow(QMainWindow):
             )
             return
 
-        if score < floor:
-            QMessageBox.information(
-                self,
-                "Queue application",
-                f"This vacancy has score {score}. Manual queue requires at least {floor}.",
-            )
-            return
-
         reply = QMessageBox.question(
             self,
             "Queue application",
@@ -1729,15 +1721,14 @@ class JobAgentWindow(QMainWindow):
         decision = str(record.get("decision", "")).upper().strip()
 
         allowed = decision == "APPLY" or override == "MANUAL_APPLY"
-        if decision == "REVIEW" and score >= self.manual_queue_spin.value():
+        if decision == "REVIEW":
             allowed = True
 
         if not allowed:
             QMessageBox.information(
                 self,
                 "Prepare now",
-                "Prepare now is available for APPLY jobs or REVIEW jobs "
-                f"with score ≥ {self.manual_queue_spin.value()}. "
+                "Prepare now is available for APPLY or REVIEW jobs. "
                 "The agent will re-check the vacancy before opening the form.",
             )
             return
