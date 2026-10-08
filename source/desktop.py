@@ -1083,6 +1083,8 @@ class JobAgentWindow(QMainWindow):
             self.extra_filter_actions[value] = action
         filter_menu.addSeparator()
         filter_menu.addAction("Сбросить фильтры", self._show_all_vacancies)
+        filter_menu.addSeparator()
+        filter_menu.addAction("Очистить старые вакансии…", self._cleanup_old_vacancies)
         self.filter_menu_btn.setMenu(filter_menu)
         filter_row.addWidget(self.filter_menu_btn)
         self.dashboard_count = QLabel("0 вакансий")
@@ -1193,6 +1195,7 @@ class JobAgentWindow(QMainWindow):
             ("Сбросить отметку", self._clear_selected_override),
             ("Посмотреть письмо", self._show_selected_cover_letter),
             ("Копировать письмо", self._copy_selected_cover_letter),
+            ("Удалить запись из базы…", self._delete_selected_vacancy),
         ]:
             action = menu.addAction(label)
             action.triggered.connect(callback)
@@ -1598,8 +1601,12 @@ class JobAgentWindow(QMainWindow):
             "Перед заполнением агент повторно проверит вакансию"
         )
         for index, action in enumerate(self.detail_actions):
-            if index >= 7:
+            if 7 <= index <= 8:
                 action.setEnabled(bool(record.get("cover_letter")))
+            elif index == 9:
+                action.setEnabled(not running and not terminal)
+            else:
+                action.setEnabled(not running and not terminal)
             else:
                 action.setEnabled(not running and not terminal)
         inactive = str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() == "INACTIVE"
@@ -1913,6 +1920,84 @@ class JobAgentWindow(QMainWindow):
                 "Clear override",
                 "This vacancy has no Dashboard override.",
             )
+
+    def _delete_selected_vacancy(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        if self.agent_process and self.agent_process.is_alive():
+            QMessageBox.warning(self, "Удаление", "Дождись завершения поиска.")
+            return
+        jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+        if protected_vacancy(record, load_job_overrides(), terminal_job_ids()):
+            QMessageBox.information(
+                self, "Удаление", "Отправленные, избранные и стоящие в очереди вакансии защищены от удаления."
+            )
+            return
+        answer = QMessageBox.question(
+            self, "Удалить запись из базы?",
+            f"Удалить «{record.get('title', '')}» из локальной базы?\n\n"
+            "История откликов сохранится. Создаётся резервная копия вакансий. "
+            "Вакансия не вернётся при следующем поиске. "
+            "Для восстановления удалённой записи понадобится резервная копия.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            hidden, rows, backup = purge_vacancy_records({jid})
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Удаление не выполнено", str(exc))
+            return
+        self._append_log(f"Удалена вакансия: {jid}; строк={rows}; backup={backup or '—'}")
+        self._refresh_dashboard()
+        QMessageBox.information(self, "Удалено", f"Удалено из базы: {hidden}. Резервная копия: {backup or 'нет'}")
+
+    def _cleanup_old_vacancies(self):
+        if self.agent_process and self.agent_process.is_alive():
+            QMessageBox.warning(self, "Очистка", "Дождись завершения поиска.")
+            return
+        choices = ["Старше 30 дней", "Старше 60 дней", "Старше 90 дней", "Старше 180 дней"]
+        selected, ok = QInputDialog.getItem(
+            self, "Очистка старых вакансий", "Удалить локальные записи:", choices, 2, False,
+        )
+        if not ok:
+            return
+        days = [30, 60, 90, 180][choices.index(selected)]
+        records = load_vacancy_records()
+        overrides = load_job_overrides()
+        submitted = terminal_job_ids()
+        ids = old_vacancy_ids(records, days, overrides=overrides, submitted_ids=submitted)
+        if not ids:
+            QMessageBox.information(
+                self, "Очистка", "Подходящих старых вакансий нет. Записи без даты сохраняются."
+            )
+            return
+        protected_count = sum(protected_vacancy(r, overrides, submitted) for r in records)
+        answer = QMessageBox.question(
+            self, "Подтвердить очистку",
+            f"Найдено {len(ids)} вакансий старше {days} дней.\n"
+            f"Защищено от удаления: {protected_count}.\n\n"
+            "Будут удалены только сохранённые записи вакансий. "
+            "История откликов не изменится. Создаётся резервная копия. "
+            "Удалённые вакансии не вернутся после поиска, а их восстановление "
+            "потребует резервной копии. Продолжить?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            hidden, rows, backup = purge_vacancy_records(ids)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Ошибка очистки", str(exc))
+            return
+        self._refresh_dashboard()
+        self._append_log(f"Очистка > {days} дней: вакансий={hidden}, строк={rows}, backup={backup or '—'}")
+        QMessageBox.information(
+            self, "Очистка завершена",
+            f"Удалено вакансий: {hidden}\nСтрок снимков: {rows}\n"
+            f"Резервная копия: {backup or 'нет'}",
+        )
 
     def _archive_selected_vacancy(self):
         record = self._selected_dashboard_record()
