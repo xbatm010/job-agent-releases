@@ -81,6 +81,11 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
             await main.manual_submit_success_signal(success, original),
             (True, "post_submit_redirect"),
         )
+        encoded = fake_page("https://www.jobs.cz/odpov%C4%9B%C4%8F-odesl%C3%A1na/2001468066/")
+        self.assertEqual(
+            await main.manual_submit_success_signal(encoded, original),
+            (True, "post_submit_redirect"),
+        )
         confirmed_text = fake_page(original, "Děkujeme za odpověď")
         self.assertEqual(
             await main.manual_submit_success_signal(confirmed_text, original),
