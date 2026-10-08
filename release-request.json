@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 30,
-  "version": "2.9.2",
+  "publish": true,
+  "request_id": 31,
+  "version": "2.9.3",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent 2.9.2 beta: manual REVIEW preparation no longer blocked by the score-65 threshold; supported-source, verified-evidence, experience, location and manual final-submit protections remain in place. StartupJobs detects incomplete/error listing pages and reports source failures accurately instead of claiming no vacancies. A new reversible Inactive Vacancies archive hides closed jobs from active results and subsequent search/preparation runs, with a restore option and preserved application history. Release smoke checks and regression tests updated.",
+  "notes": "Job Agent 2.9.3 beta hardens manual application confirmation: navigation to an unrelated page can no longer be mistaken for a successful submission. Confirmations require success text or a recognized thank-you URL, including Czech Jobs.cz odpoved-odeslana. When no cover-letter field exists, the agent now warns explicitly before manual final Submit and points to the saved draft for optional copying. Adds automatic offline PR testing; 38 regression tests passed in GitHub Actions. Final employer Submit remains manual.",
   "last_published": "2.9.2",
   "last_sha256": "45b6dd130641c68b67b8075ed0266121383577ca570a3d252556bdd5e7a4d07b"
 }
