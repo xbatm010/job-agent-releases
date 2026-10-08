@@ -929,7 +929,7 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_search.addAction(ui_icon("search", "#69758d", 20), QLineEdit.LeadingPosition)
         self.dashboard_search.setClearButtonEnabled(True)
         self.dashboard_decision_filter = QComboBox(self)
-        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue ≥ threshold")]:
+        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Неактивные", "INACTIVE"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue ≥ threshold")]:
             self.dashboard_decision_filter.addItem(label, value)
         self.dashboard_decision_filter.hide()
         self.dashboard_source_filter = QComboBox(self)
@@ -1076,6 +1076,8 @@ class JobAgentWindow(QMainWindow):
             ("Сохранить в избранное", lambda: self._set_selected_override("INTERESTING")),
             ("Отметить для проверки", lambda: self._set_selected_override("REVIEW")),
             ("Пропустить", lambda: self._set_selected_override("SKIP")),
+            ("Убрать неактивную вакансию", self._archive_selected_vacancy),
+            ("Восстановить вакансию", self._restore_selected_vacancy),
             ("Сбросить отметку", self._clear_selected_override),
             ("Посмотреть письмо", self._show_selected_cover_letter),
             ("Копировать письмо", self._copy_selected_cover_letter),
@@ -1488,6 +1490,10 @@ class JobAgentWindow(QMainWindow):
                 action.setEnabled(bool(record.get("cover_letter")))
             else:
                 action.setEnabled(not running and not terminal)
+        inactive = str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() == "INACTIVE"
+        self.detail_actions[4].setEnabled(not running and not inactive)
+        self.detail_actions[5].setEnabled(not running and inactive)
+        self.prepare_now_btn.setEnabled(self.prepare_now_btn.isEnabled() and not inactive)
         self.detail_actions[0].setEnabled(
             not running and not terminal and supported
             and record.get("decision") == "REVIEW" and score >= self.manual_queue_spin.value()
@@ -1523,9 +1529,13 @@ class JobAgentWindow(QMainWindow):
             display_decision = "SUBMITTED"
         status = str(record.get("status", "")).upper().strip()
 
+        selected = self.dashboard_decision_filter.currentData() or "All"
+        if override == "INACTIVE":
+            return selected == "INACTIVE"
+        if selected == "INACTIVE":
+            return False
         if not include_decision:
             return True
-        selected = self.dashboard_decision_filter.currentData() or "All"
         if selected == "All":
             return True
         if selected == "SUBMITTED":
@@ -1805,6 +1815,30 @@ class JobAgentWindow(QMainWindow):
                 "Clear override",
                 "This vacancy has no Dashboard override.",
             )
+
+    def _archive_selected_vacancy(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        reply = QMessageBox.question(
+            self, "Неактивная вакансия",
+            "Скрыть вакансию из поиска и активного списка? История откликов сохранится.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        write_job_override(str(record.get("job_id", "")), "INACTIVE")
+        self._refresh_dashboard()
+
+    def _restore_selected_vacancy(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        jid = str(record.get("job_id", ""))
+        if str(load_job_overrides().get(jid, {}).get("decision", "")).upper() != "INACTIVE":
+            return
+        delete_job_override(jid)
+        self._refresh_dashboard()
 
     def _set_selected_override(self, decision):
         record = self._selected_dashboard_record()
