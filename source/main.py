@@ -5203,7 +5203,7 @@ async def manual_first_name_fallback(page, form):
     """
     if not MANUAL_SUBMIT_HOLD or MANUAL_NAME_WAIT_SECONDS <= 0:
         return False
-    print("\\n🧑 FIRST NAME NEEDS MANUAL INPUT")
+    print("\n🧑 FIRST NAME NEEDS MANUAL INPUT")
     print("   In the open application form, fill/check your first name manually.")
     print("   Do NOT click final Submit yet; the agent will verify the field.")
     print(f"   Waiting up to {MANUAL_NAME_WAIT_SECONDS} seconds...")
@@ -7244,10 +7244,12 @@ async def prepare_application(job):
                     )
 
                 if missing:
+                    reason = "Missing/invalid: " + ", ".join(missing)
+                    if missing == ["first_name"] and form.get("submit"):
+                        reason += "; first name needs manual completion"
                     return (
                         "FORM_PARTIALLY_FILLED",
-                        "Missing/invalid: " + ", ".join(missing)
-                        + "; manual completion not detected within the time limit",
+                        reason,
                         page.url,
                         form,
                     )
