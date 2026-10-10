@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.9.6",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.6/job-agent-2.9.6-macos.zip",
-      "sha256": "f5fdbec72eb87a8ba4d72ea252e470ed63e1a10ae0fe654561209a5ddf3d11b8",
-      "notes": "Job Agent v2.9.6 beta fixes two regressions found from real v2.9.5 search logs: (1) analytics, data, reporting and PowerBI internship/trainee titles are recognized as expanded entry-level opportunities, with existing strong-evidence and data-skill safety gates retained, rather than being incorrectly discarded as unrelated; (2) the agent's startup journal reads the packaged version.json so the runtime version matches the installed release, instead of always saying v2.9.1. Five actual manual submissions were confirmed in the prior run; final employer Submit stays manual. GitHub Actions: 48 offline tests passed.",
+      "version": "2.9.7",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.7/job-agent-2.9.7-macos.zip",
+      "sha256": "3de33b88670ff7c4be8468708c0b97a3d4623431f1625e97c3a1e7ce2adc88b2",
+      "notes": "Job Agent v2.9.7 beta: when Jobs.cz presents a sensitive 'Pokračovat v odpovědi' preliminary-application handoff, Job Agent does not click it or claim a submission. It records PRE_APPLY_CONFIRMATION_REQUIRED and its local handoff URL, exposes an explicit 'Продолжить отклик вручную…' Dashboard action, reports pending manual follow-ups separately, and continues preparation of independent APPLY jobs. Login, consent and unconfirmed final-submit intervention statuses still pause the queue. Fixes metadata employer parsing where title fragments such as 'analytička' were incorrectly taken as a company. All 52 offline regression tests passed on GitHub Actions. Final submission remains manual.",
       "min_version": "2.3.1"
     }
   }

@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 35,
   "version": "2.9.7",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent v2.9.7 beta: when Jobs.cz presents a sensitive 'Pokračovat v odpovědi' preliminary-application handoff, Job Agent does not click it or claim a submission. It records PRE_APPLY_CONFIRMATION_REQUIRED and its local handoff URL, exposes an explicit 'Продолжить отклик вручную…' Dashboard action, reports pending manual follow-ups separately, and continues preparation of independent APPLY jobs. Login, consent and unconfirmed final-submit intervention statuses still pause the queue. Fixes metadata employer parsing where title fragments such as 'analytička' were incorrectly taken as a company. All 52 offline regression tests passed on GitHub Actions. Final submission remains manual.",
-  "last_published": "2.9.6",
-  "last_sha256": "f5fdbec72eb87a8ba4d72ea252e470ed63e1a10ae0fe654561209a5ddf3d11b8"
+  "last_published": "2.9.7",
+  "last_sha256": "3de33b88670ff7c4be8468708c0b97a3d4623431f1625e97c3a1e7ce2adc88b2"
 }
