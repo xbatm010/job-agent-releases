@@ -59,6 +59,12 @@ VERIFIED_TARGET_APPLY_SCORE = int(os.getenv("VERIFIED_TARGET_APPLY_SCORE", "64")
 VERIFIED_TARGET_MIN_CANDIDATE_FIT = int(os.getenv(
     "VERIFIED_TARGET_MIN_CANDIDATE_FIT", "10"
 ))
+# Score measures broad relevance; this separate guard measures sufficient
+# candidate skill evidence before recommending an unrequested APPLY.
+TARGET_MIN_CANDIDATE_FIT = int(os.getenv("TARGET_MIN_CANDIDATE_FIT", "10"))
+TARGET_ENTRY_MIN_CANDIDATE_FIT = int(os.getenv(
+    "TARGET_ENTRY_MIN_CANDIDATE_FIT", "6"
+))
 MAX_APPLICATIONS_PER_RUN = int(os.getenv("MAX_APPLICATIONS_PER_RUN", "3"))
 CONTINUE_AFTER_APPLICATION_ERROR = os.getenv(
     "CONTINUE_AFTER_APPLICATION_ERROR", "true"
@@ -1422,6 +1428,15 @@ def score_job(job):
     expanded_signals = expanded_assessment["signals"]
     expanded_fit_min = expanded_assessment["candidate_fit_min"]
     expanded_apply_blockers = list(expanded_assessment["blockers"])
+    target_fit_min = (
+        TARGET_ENTRY_MIN_CANDIDATE_FIT if entry_signal
+        else TARGET_MIN_CANDIDATE_FIT
+    ) if rc == "target" else None
+    target_apply_blockers = []
+    if rc == "target" and candidate_fit < target_fit_min:
+        target_apply_blockers.append(
+            f"candidate_fit={candidate_fit} < {target_fit_min}"
+        )
     if rc == "expanded" and score < EXPANDED_APPLY_SCORE:
         expanded_apply_blockers.append(f"score={score} < {EXPANDED_APPLY_SCORE}")
 
@@ -1441,6 +1456,7 @@ def score_job(job):
         rc == "target"
         and not hard_experience
         and evidence == "strong"
+        and not target_apply_blockers
         and (
             score >= MIN_APPLY_SCORE
             or (entry_signal and score >= ENTRY_APPLY_SCORE)
@@ -1495,6 +1511,11 @@ def score_job(job):
         rc == "expanded" and decision == "APPLY" and entry_signal
         and candidate_fit < EXPANDED_MIN_CANDIDATE_FIT
     )
+    if rc == "target":
+        reasons.insert(0, "target_apply_blockers=" + (
+            "; ".join(target_apply_blockers) or "none"
+        ))
+        reasons.insert(1, f"target_candidate_fit_min={target_fit_min}")
     if rc == "expanded":
         reasons.insert(0, "expanded_apply_blockers=" + (
             "; ".join(expanded_apply_blockers) or "none"
@@ -1514,6 +1535,8 @@ def score_job(job):
         "decision": decision,
         "role_fit": role_fit,
         "candidate_fit": candidate_fit,
+        "target_candidate_fit_min": target_fit_min,
+        "target_apply_blockers": target_apply_blockers,
         "experience_fit": experience_fit,
         "language_fit": language_fit,
         "location_fit": location_fit,
@@ -1556,6 +1579,27 @@ def load_processed():
             if canonical:
                 out.add(canonical)
     return out
+
+
+def load_pending_manual_handoffs():
+    """Latest application status wins; a pending human handoff is not submitted.
+
+    Pending handoffs stay in Dashboard and can be completed manually, but
+    repeated discovery must not reopen the same sensitive Jobs.cz step.
+    """
+    if not APPLICATIONS_FILE.exists():
+        return set()
+    latest = {}
+    with APPLICATIONS_FILE.open("r", encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            key = canonicalize_saved_history_id(row.get("job_id", ""))
+            if key:
+                latest[key] = row.get("status", "")
+    return {
+        key for key, status in latest.items()
+        if status == "PRE_APPLY_CONFIRMATION_REQUIRED"
+    }
+
 
 def load_job_overrides():
     if not OVERRIDES_FILE.exists():
@@ -1638,6 +1682,10 @@ def save_status(job, status, score, reason):
         "resolved_location": job.get("resolved_location", ""),
         "evidence_quality": job.get("evidence_quality", ""),
         "candidate_fit": job.get("candidate_fit"),
+        "target_candidate_fit_min": job.get("target_candidate_fit_min"),
+        "target_apply_blockers": job.get("target_apply_blockers", []),
+        "matched": job.get("matched", []),
+        "gaps": job.get("gaps", []),
         "expanded_candidate_fit_min": job.get("expanded_candidate_fit_min"),
         "expanded_apply_blockers": job.get("expanded_apply_blockers", []),
         "expanded_signals": job.get("expanded_signals", []),
@@ -7399,7 +7447,13 @@ async def main():
         raise FileNotFoundError(CV_PATH)
 
     processed = load_processed()
+    pending_handoffs = load_pending_manual_handoffs()
     print(f"🗂️ Previously processed: {len(processed)} job(s)")
+    if pending_handoffs:
+        print(
+            f"🧭 Awaiting your manual Jobs.cz handoff: {len(pending_handoffs)} "
+            "vacancy(s); kept in Dashboard, excluded from automatic retry."
+        )
 
     session = requests.Session()
     jobs = await discover_all(session)
@@ -7422,7 +7476,7 @@ async def main():
         if str(value.get("decision", "")).upper() == "INACTIVE"
     }
     fresh = select_discovery_candidates(
-        jobs, processed, inactive_ids, MAX_JOBS_TO_REVIEW * 3,
+        jobs, processed, inactive_ids | pending_handoffs, MAX_JOBS_TO_REVIEW * 3,
     )
     print(
         f"🎯 Relevance-first enrichment: {len(fresh)} candidate(s) "
@@ -7549,6 +7603,8 @@ async def main():
             f"verified={'YES' if job.get('evidence_verified') else 'NO'} | "
             f"promotion={'YES' if job.get('verified_target_promotion') else 'NO'} | "
             f"candidate_fit={job.get('candidate_fit', '-')} | "
+            f"target_fit_min={job.get('target_candidate_fit_min') or '-'} | "
+            f"target_blockers={'; '.join(job.get('target_apply_blockers', [])) or 'none'} | "
             f"expanded_fit_min={job.get('expanded_candidate_fit_min') or '-'} | "
             f"entry_promotion={'YES' if job.get('expanded_entry_promotion') else 'NO'} | "
             f"expanded_blockers={'; '.join(job.get('expanded_apply_blockers', [])) or 'none'} | "

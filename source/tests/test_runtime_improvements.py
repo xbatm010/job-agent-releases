@@ -178,6 +178,45 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertTrue(main.valid_company("Komerční banka", "meta"))
         self.assertTrue(main.valid_company("Prague Finance s.r.o.", "meta"))
 
+    async def test_pending_handoff_is_excluded_from_future_auto_discovery(self):
+        pending = vacancy("Analytics and PowerBI Development Intern", job_id="2001443223")
+        fresh = vacancy("Junior Data Analyst", job_id="2001443999")
+        pending["source"] = "jobs.cz"
+        main.save_status(
+            pending, "PRE_APPLY_CONFIRMATION_REQUIRED", 79,
+            "Manual continuation is required",
+        )
+        self.assertEqual(main.load_pending_manual_handoffs(), {"job:2001443223"})
+        called = []
+        def enrich(job, _):
+            called.append(job["job_id"])
+            return job
+        cwd = Path.cwd()
+        try:
+            os.chdir(self.state.name)
+            with patch.object(main, "SEARCH_ONLY", True), \
+                    patch.object(main, "discover_all", AsyncMock(return_value=[pending, fresh])), \
+                    patch.object(main, "enrich_job", side_effect=enrich), \
+                    patch.object(main, "browser_recover_weak_evidence",
+                                 AsyncMock(side_effect=lambda jobs: jobs)), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                await main.main()
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(called, ["2001443999"])
+        records = [json.loads(line) for line in main.VACANCIES_FILE.read_text().splitlines()]
+        statuses = [r["status"] for r in records if r["job_id"] == "job:2001443223"]
+        self.assertEqual(statuses, ["PRE_APPLY_CONFIRMATION_REQUIRED"])
+        self.assertEqual(main.load_pending_manual_handoffs(), {"job:2001443223"})
+
+    async def test_pending_manual_handoff_cleared_only_by_later_status(self):
+        job = vacancy("Junior Data Analyst", job_id="2001443223")
+        main.save_status(job, "PRE_APPLY_CONFIRMATION_REQUIRED", 79, "human follow-up")
+        self.assertIn("job:2001443223", main.load_pending_manual_handoffs())
+        main.save_status(job, "SUBMITTED_MANUALLY", 79, "confirmed")
+        self.assertNotIn("job:2001443223", main.load_pending_manual_handoffs())
+        self.assertIn("job:2001443223", main.load_processed())
+
     async def test_search_only_saves_apply_without_cv_or_form_preparation(self):
         job = vacancy()
         prepare = AsyncMock()
