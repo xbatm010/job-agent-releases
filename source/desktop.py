@@ -1206,6 +1206,7 @@ class JobAgentWindow(QMainWindow):
             ("Посмотреть письмо", self._show_selected_cover_letter),
             ("Копировать письмо", self._copy_selected_cover_letter),
             ("Удалить запись из базы…", self._delete_selected_vacancy),
+            ("Продолжить отклик вручную…", self._open_pending_handoff),
         ]:
             action = menu.addAction(label)
             action.triggered.connect(callback)
@@ -1615,6 +1616,13 @@ class JobAgentWindow(QMainWindow):
                 action.setEnabled(bool(record.get("cover_letter")))
             elif index == 9:
                 action.setEnabled(not running and not terminal)
+            elif index == 10:
+                url = str(record.get("handoff_url", ""))
+                action.setEnabled(
+                    str(record.get("status", "")) == "PRE_APPLY_CONFIRMATION_REQUIRED"
+                    and url.startswith("https://www.jobs.cz/externi-jof/")
+                    and str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() != "INACTIVE"
+                )
             else:
                 action.setEnabled(not running and not terminal)
         inactive = str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() == "INACTIVE"
@@ -1752,6 +1760,20 @@ class JobAgentWindow(QMainWindow):
                 self,
                 "Vacancy",
                 "No vacancy URL is available for this record.",
+            )
+            return
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _open_pending_handoff(self):
+        """Explicit human click only: never continue Jobs.cz handoffs silently."""
+        record = self._selected_dashboard_record()
+        if not record or str(record.get("status", "")) != "PRE_APPLY_CONFIRMATION_REQUIRED":
+            return
+        url = str(record.get("handoff_url", "")).strip()
+        if not url.startswith("https://www.jobs.cz/externi-jof/"):
+            QMessageBox.information(
+                self, "Ручной отклик",
+                "Ссылка продолжения недоступна. Открой вакансию на Jobs.cz.",
             )
             return
         QDesktopServices.openUrl(QUrl(url))
