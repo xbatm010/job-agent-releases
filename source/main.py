@@ -885,6 +885,14 @@ def valid_company(name, source="generic"):
     if normalize_key_text(name) in {normalize_key_text(x) for x in location_names}:
         return False
 
+    # SEO title fragments describing a role are not employer names.
+    if normalize_key_text(name) in {
+        "analytik", "analyticka", "analyst", "business analyst",
+        "data analyst", "specialista", "specialist", "intern",
+        "internship", "trainee",
+    }:
+        return False
+
     # Metadata can contain slogans or clipped teaser fragments that are not
     # employer names (for example "...kde jinde."). Reject ellipsis-wrapped
     # fragments before any looser brand-name heuristics.
@@ -1643,6 +1651,7 @@ def save_status(job, status, score, reason):
         "decision": job.get("decision", ""),
         "status": status,
         "reason": reason,
+        "handoff_url": job.get("handoff_url", "") if status == "PRE_APPLY_CONFIRMATION_REQUIRED" else "",
         "description": job.get("description", ""),
         "reasons": job.get("reasons", []),
     }
@@ -2351,8 +2360,14 @@ async def extract_company_from_page(page):
             low = cand.lower()
             if low in {"jobs.cz", "prace.cz", "jobs", "prace"}:
                 continue
-            if h1_text and normalize_key_text(cand) == normalize_key_text(h1_text):
-                continue
+            if h1_text:
+                candidate_key = normalize_key_text(cand)
+                heading_key = normalize_key_text(h1_text)
+                if candidate_key and re.search(
+                    r"(?:^|\s)" + re.escape(candidate_key) + r"(?:$|\s)",
+                    heading_key,
+                ):
+                    continue
             if not valid_company(cand, "meta"):
                 continue
 
@@ -6990,7 +7005,8 @@ async def prepare_application(job):
                     return (
                         "PRE_APPLY_CONFIRMATION_REQUIRED",
                         "Jobs.cz 'Pokračovat v odpovědi' may create a preliminary employer application. "
-                        "Set ALLOW_JOBS_HANDOFF=true only when you intentionally want to proceed.",
+                        "Open the saved handoff link from Dashboard and continue it yourself; "
+                        "the agent will process remaining vacancies without clicking it.",
                         page.url,
                         handoff,
                     )
@@ -7101,6 +7117,10 @@ USER_INTERVENTION_STATUSES = {
 
 
 def should_continue_after_application(status):
+    # A blocked handoff needs manual action for this vacancy only.
+    # Never click "Pokračovat v odpovědi" automatically.
+    if status == "PRE_APPLY_CONFIRMATION_REQUIRED":
+        return True
     if status in TERMINAL_SUCCESS_STATUSES:
         return True
     if status in USER_INTERVENTION_STATUSES:
@@ -7582,6 +7602,7 @@ async def main():
 
     run_results = []
     submitted_count = 0
+    manual_handoffs = []
 
     for index, target in enumerate(queue, 1):
         print("\n" + "#" * 72)
@@ -7603,6 +7624,15 @@ async def main():
             current_url = target.get("url", "")
             form = {}
 
+        if status == "PRE_APPLY_CONFIRMATION_REQUIRED":
+            # Save the exact reviewed Jobs.cz handoff for manual continuation.
+            handoff = urlparse(str(current_url or ""))
+            target["handoff_url"] = (
+                current_url if handoff.scheme == "https"
+                and handoff.hostname == "www.jobs.cz"
+                and handoff.path.startswith("/externi-jof/") else ""
+            )
+            manual_handoffs.append((target, target["handoff_url"]))
         save_status(target, status, target["score"], reason)
 
         if status in TERMINAL_SUCCESS_STATUSES:
@@ -7629,6 +7659,9 @@ async def main():
 
         if index < len(queue):
             if should_continue_after_application(status):
+                if status == "PRE_APPLY_CONFIRMATION_REQUIRED":
+                    print("\n⚠️ Handoff requires manual action; no handoff was clicked.")
+                    print("   This vacancy is saved for manual continuation from Dashboard.")
                 print(
                     f"\n➡️ Continuing to next APPLY candidate "
                     f"({index + 1}/{len(queue)})..."
@@ -7646,6 +7679,12 @@ async def main():
     print(f"Queued APPLY candidates: {len(queue)}")
     print(f"Attempted this run: {len(run_results)}")
     print(f"Confirmed submissions: {submitted_count}")
+    print(f"Pending manual Jobs.cz handoffs: {len(manual_handoffs)}")
+    for job, handoff_url in manual_handoffs:
+        print(
+            f"   Manual follow-up: {job.get('actual_title') or job.get('title')}"
+            f" | {handoff_url or job.get('url', '')}"
+        )
 
     for i, result in enumerate(run_results, 1):
         target = result["target"]

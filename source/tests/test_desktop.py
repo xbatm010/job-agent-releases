@@ -63,6 +63,24 @@ class DesktopTests(unittest.TestCase):
         self.filter("All")
         self.assertIn("job:2000000001", [r["job_id"] for r in self.window.dashboard_records])
 
+    def test_explicit_manual_jobs_handoff_link_is_offered_only_when_pending(self):
+        record = self.records[0]
+        handoff_url = "https://www.jobs.cz/externi-jof/2000000001/"
+        record["status"] = "PRE_APPLY_CONFIRMATION_REQUIRED"
+        record["handoff_url"] = handoff_url
+        self.window._refresh_dashboard()
+        self.window.dashboard_table.selectRow(0)
+        manual_action = self.window.detail_actions[10]
+        self.assertTrue(manual_action.isEnabled())
+        with patch.object(desktop.QDesktopServices, "openUrl", return_value=True) as opened:
+            manual_action.trigger()
+            opened.assert_called_once()
+            self.assertEqual(opened.call_args.args[0].toString(), handoff_url)
+
+        record["status"] = "READY_TO_PREPARE"
+        self.window._refresh_dashboard()
+        self.assertFalse(manual_action.isEnabled())
+
     def test_history_and_translated_filters_keep_submitted_out_of_apply(self):
         self.filter("APPLY")
         self.assertEqual([r["job_id"] for r in self.window.dashboard_records], ["job:2000000001"])

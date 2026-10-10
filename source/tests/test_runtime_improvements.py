@@ -125,6 +125,59 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
             with patch.dict(os.environ, {"JOB_AGENT_VERSION": "fallback-version"}):
                 self.assertEqual(main.current_agent_version(), "fallback-version")
 
+    async def test_blocked_jobs_handoff_does_not_block_other_vacancies(self):
+        jobs = [
+            vacancy("Junior Data Analyst", job_id="2001443223"),
+            vacancy("Junior Data Analyst", job_id="2001443224"),
+        ]
+        cv = Path(self.state.name) / "fixture-cv.txt"
+        cv.write_text("dummy cv")
+        handoff_url = "https://www.jobs.cz/externi-jof/2001443223/"
+        prepare = AsyncMock(side_effect=[
+            ("PRE_APPLY_CONFIRMATION_REQUIRED", "manual handoff", handoff_url,
+             {"stage": "jobs_handoff"}),
+            ("SUBMITTED_MANUALLY", "confirmed by user", "https://www.jobs.cz/odpoved-odeslana/2001443224/",
+             {}),
+        ])
+        output = io.StringIO()
+        previous = Path.cwd()
+        try:
+            os.chdir(self.state.name)
+            with patch.multiple(main, SEARCH_ONLY=False, CV_PATH=str(cv), MAX_APPLICATIONS_PER_RUN=3), \
+                    patch.object(main, "discover_all", AsyncMock(return_value=jobs)), \
+                    patch.object(main, "enrich_job", side_effect=lambda j, _: j), \
+                    patch.object(main, "browser_recover_weak_evidence", AsyncMock(side_effect=lambda j: j)), \
+                    patch.object(main, "prepare_application", prepare), \
+                    contextlib.redirect_stdout(output):
+                await main.main()
+        finally:
+            os.chdir(previous)
+        self.assertEqual(prepare.await_count, 2)
+        records = [json.loads(x) for x in main.VACANCIES_FILE.read_text(encoding="utf-8").splitlines()]
+        by_id = {r["job_id"]: r for r in records}
+        self.assertEqual(by_id["job:2001443223"]["status"], "PRE_APPLY_CONFIRMATION_REQUIRED")
+        self.assertEqual(by_id["job:2001443223"]["handoff_url"], handoff_url)
+        self.assertEqual(by_id["job:2001443224"]["status"], "SUBMITTED_MANUALLY")
+        self.assertEqual(main.load_processed(), {"job:2001443224"})
+        self.assertIn("Pending manual Jobs.cz handoffs: 1", output.getvalue())
+        self.assertIn("Confirmed submissions: 1", output.getvalue())
+
+    async def test_handoff_does_not_relax_other_user_intervention_gates(self):
+        self.assertTrue(main.should_continue_after_application("PRE_APPLY_CONFIRMATION_REQUIRED"))
+        for status in (
+            "LOGIN_REQUIRED", "WORKDAY_LOGIN_REQUIRED",
+            "PWC_CONSENT_CHOICES_REQUIRED", "READY_FOR_MANUAL_SUBMIT",
+        ):
+            with self.subTest(status=status):
+                self.assertFalse(main.should_continue_after_application(status))
+        self.assertTrue(main.should_continue_after_application("SUBMITTED_MANUALLY"))
+
+    async def test_role_title_fragment_is_not_company(self):
+        self.assertFalse(main.valid_company("analytička", "meta"))
+        self.assertFalse(main.valid_company("Business Analyst", "meta"))
+        self.assertTrue(main.valid_company("Komerční banka", "meta"))
+        self.assertTrue(main.valid_company("Prague Finance s.r.o.", "meta"))
+
     async def test_search_only_saves_apply_without_cv_or_form_preparation(self):
         job = vacancy()
         prepare = AsyncMock()
