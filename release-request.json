@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 37,
-  "version": "2.9.9",
+  "publish": true,
+  "request_id": 38,
+  "version": "2.9.10",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v2.9.9 beta adds explicit required-vs-preferred skill identification for vacancy descriptions in Czech and English. General technology mentions and nice-to-have skills no longer create mandatory skill penalties. Explicit must-have skills absent from the candidate profile (or listed only at basic proficiency) are displayed as missing required skills and block automatic APPLY in favor of REVIEW; the user retains human-controlled REVIEW preparation, subject to existing experience/evidence/location safety checks. Required and preferred skills plus blockers are kept in local Dashboard vacancy snapshots. The run summary now distinguishes new Jobs.cz manual handoffs from total pending manual follow-ups, avoiding the misleading pending=0 line while an earlier Sanofi application is still awaiting human action. User log from v2.9.8 confirmed one manually submitted Group Reporting Specialist application to Penta Hospitals CZ. 61 offline regression tests passed in GitHub Actions. Final employer Submit remains manual.",
+  "notes": "Job Agent v2.9.10 beta fixes two real custom Jobs.cz form issues found in v2.9.9 logs. The first-name selector no longer accidentally targets Czech surname input `prijmeno` or `příjmení` through broad `*jmeno` matching. For Siemens (ambiguous three text inputs) and VIG Re (assessment form with no safe positional fallback), if first_name alone remains missing, the app now offers up to 120 seconds for the user to fill it manually in Chromium; read-only validation requires a unique visible exact first-name value in a non-surname field, after which the existing human final-submit hold resumes. If not completed, the vacancy stays FORM_PARTIALLY_FILLED without falsely claiming submission and the agent continues to remaining candidates. Three prior submissions (Trigema, Adastra, mBank) confirmed. All 65 offline regression tests passed in GitHub Actions; no automatic final submit, employer handoff, or guessing input positions.",
   "last_published": "2.9.9",
   "last_sha256": "954b1f3b27a66c139b98ef4af9f121d297a6558dcf0426cc0ebdc16d8b0020f8"
 }
