@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 35,
-  "version": "2.9.7",
+  "publish": true,
+  "request_id": 36,
+  "version": "2.9.8",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v2.9.7 beta: when Jobs.cz presents a sensitive 'Pokračovat v odpovědi' preliminary-application handoff, Job Agent does not click it or claim a submission. It records PRE_APPLY_CONFIRMATION_REQUIRED and its local handoff URL, exposes an explicit 'Продолжить отклик вручную…' Dashboard action, reports pending manual follow-ups separately, and continues preparation of independent APPLY jobs. Login, consent and unconfirmed final-submit intervention statuses still pause the queue. Fixes metadata employer parsing where title fragments such as 'analytička' were incorrectly taken as a company. All 52 offline regression tests passed on GitHub Actions. Final submission remains manual.",
+  "notes": "Job Agent v2.9.8 beta introduces the first transparent Smart Scoring readiness gate: for automatic APPLY, ordinary target Data/Business Analyst roles now require candidate_fit >= 10, while clearly junior/intern/trainee target roles require >= 6. A high title/overall match without sufficient skill evidence becomes REVIEW rather than automatic APPLY, and explicit user-approved REVIEW preparation remains available subject to existing safety gates. Skills readiness minimum/blockers, matched and missing skills are retained in Dashboard snapshots and logged separately from the numeric relevance score. Pending Jobs.cz PRE_APPLY_CONFIRMATION_REQUIRED handoffs are no longer retried by the automatic search, preserving the manual follow-up link and history. GitHub Actions: 57 tests passed; final Submit remains manual.",
   "last_published": "2.9.7",
   "last_sha256": "3de33b88670ff7c4be8468708c0b97a3d4623431f1625e97c3a1e7ce2adc88b2"
 }
