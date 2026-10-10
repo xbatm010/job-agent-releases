@@ -41,6 +41,9 @@ LOGIN_BOOTSTRAP = os.getenv("LOGIN_BOOTSTRAP", "true").lower() == "true"
 LOGIN_WAIT_SECONDS = int(os.getenv("LOGIN_WAIT_SECONDS", "240"))
 MANUAL_CV_FALLBACK = os.getenv("MANUAL_CV_FALLBACK", "true").lower() == "true"
 MANUAL_CV_WAIT_SECONDS = int(os.getenv("MANUAL_CV_WAIT_SECONDS", "180"))
+# A human may complete an ambiguous first-name field without the agent
+# guessing input positions. Submission remains exclusively human-controlled.
+MANUAL_NAME_WAIT_SECONDS = int(os.getenv("MANUAL_NAME_WAIT_SECONDS", "120"))
 APPLICATION_DEBUG = os.getenv("APPLICATION_DEBUG", "true").lower() == "true"
 MIN_APPLY_SCORE = int(os.getenv("MIN_APPLY_SCORE", "66"))
 ENTRY_APPLY_SCORE = int(os.getenv("ENTRY_APPLY_SCORE", "62"))
@@ -5140,6 +5143,80 @@ async def fill_czech_cover_letter(page, job):
         result["source"] = f"fill_failed:{type(exc).__name__}"
         return result
 
+FIRST_NAME_SELECTORS = [
+    'input[autocomplete="given-name"]',
+    'input[name*="first" i]',
+    'input[id*="first" i]',
+    'input[name*="given" i]',
+    'input[id*="given" i]',
+    # Czech surname "prijmeno" / "příjmení" contains "jmeno" / "jméno".
+    # Never use name*=jmeno, as it can overwrite the surname field.
+    'input[name="jmeno" i]',
+    'input[id="jmeno" i]',
+    'input[name="jméno" i]',
+    'input[id="jméno" i]',
+    'input[name*="krest" i]',
+    'input[id*="krest" i]',
+]
+
+async def manually_verified_first_name(page):
+    """Read-only confirmation of the candidate's manually entered first name.
+
+    Unknown fields are accepted only with a unique exact value match.
+    A surname/full-name input is never treated as first name. No write,
+    navigation, or submission is performed by this check.
+    """
+    expected = str(CANDIDATE.get("first_name", "")).strip().casefold()
+    if not expected:
+        return False
+    matches = 0
+    for frame in await page_contexts(page):
+        try:
+            loc = frame.locator("input")
+            for i in range(min(await loc.count(), 260)):
+                el = loc.nth(i)
+                try:
+                    if not await el.is_visible() or await el.is_disabled():
+                        continue
+                    typ = (await el.get_attribute("type") or "text").lower()
+                    if typ not in {"text", ""}:
+                        continue
+                    current = (await el.input_value() or "").strip().casefold()
+                    if current != expected:
+                        continue
+                    role = name_field_role(await input_metadata(el))
+                    if role in {"last", "full"}:
+                        continue
+                    matches += 1
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    return matches == 1
+
+
+async def manual_first_name_fallback(page, form):
+    """Wait for a person to fill a missing/ambiguous first-name input.
+
+    Bounded and opt-in via the existing manual-submit hold. A unique,
+    read-only value check determines readiness, not input position.
+    """
+    if not MANUAL_SUBMIT_HOLD or MANUAL_NAME_WAIT_SECONDS <= 0:
+        return False
+    print("\n🧑 FIRST NAME NEEDS MANUAL INPUT")
+    print("   In the open application form, fill/check your first name manually.")
+    print("   Do NOT click final Submit yet; the agent will verify the field.")
+    print(f"   Waiting up to {MANUAL_NAME_WAIT_SECONDS} seconds...")
+    for _ in range(MANUAL_NAME_WAIT_SECONDS):
+        if await manually_verified_first_name(page):
+            form["first_name"] = True
+            form["first_name_source"] = "manual_unique_visible_input"
+            print("✅ Manually entered first name verified; final Submit stays manual.")
+            return True
+        await page.wait_for_timeout(1000)
+    return False
+
+
 async def inspect_form(page, job=None):
     result = {
         "first_name": False,
@@ -5186,19 +5263,7 @@ async def inspect_form(page, job=None):
         return ""
 
     # Names / email: keep proven v28 selectors.
-    await fill_any([
-        'input[autocomplete="given-name"]',
-        'input[name*="first" i]',
-        'input[id*="first" i]',
-        'input[name*="given" i]',
-        'input[id*="given" i]',
-        'input[name*="jmeno" i]',
-        'input[id*="jmeno" i]',
-        'input[name*="jméno" i]',
-        'input[id*="jméno" i]',
-        'input[name*="krest" i]',
-        'input[id*="krest" i]',
-    ], CANDIDATE["first_name"])
+    await fill_any(FIRST_NAME_SELECTORS, CANDIDATE["first_name"])
 
     await fill_any([
         'input[autocomplete="family-name"]',
@@ -5277,19 +5342,7 @@ async def inspect_form(page, job=None):
     result["cover_letter_source"] = cover_state.get("source", "")
     result["cover_letter_chars"] = cover_state.get("chars", 0)
 
-    first_val = await read_any([
-        'input[autocomplete="given-name"]',
-        'input[name*="first" i]',
-        'input[id*="first" i]',
-        'input[name*="given" i]',
-        'input[id*="given" i]',
-        'input[name*="jmeno" i]',
-        'input[id*="jmeno" i]',
-        'input[name*="jméno" i]',
-        'input[id*="jméno" i]',
-        'input[name*="krest" i]',
-        'input[id*="krest" i]',
-    ])
+    first_val = await read_any(FIRST_NAME_SELECTORS)
     last_val = await read_any([
         'input[autocomplete="family-name"]',
         'input[name*="last" i]',
@@ -7173,7 +7226,16 @@ async def prepare_application(job):
             if missing:
                 await collect_application_debug(page)
 
-                if missing == ["cv"]:
+                # Special-case the real Siemens/VIG failure: never guess from
+                # 3 unknown text fields or an unrelated assessment URL.
+                # Let the human complete the first name in Chromium, and
+                # verify it without writing to any unknown input.
+                if missing == ["first_name"] and form.get("submit"):
+                    if await manual_first_name_fallback(page, form):
+                        missing = []
+                if not missing:
+                    print("🧑 Manual first-name completion accepted.")
+                elif missing == ["cv"]:
                     return (
                         "CV_ATTACHMENT_REQUIRED",
                         "Form is otherwise ready, but CV attachment was not detected automatically or during the bounded manual fallback",
@@ -7181,12 +7243,16 @@ async def prepare_application(job):
                         form,
                     )
 
-                return (
-                    "FORM_PARTIALLY_FILLED",
-                    "Missing/invalid: " + ", ".join(missing),
-                    page.url,
-                    form,
-                )
+                if missing:
+                    reason = "Missing/invalid: " + ", ".join(missing)
+                    if missing == ["first_name"] and form.get("submit"):
+                        reason += "; first name needs manual completion"
+                    return (
+                        "FORM_PARTIALLY_FILLED",
+                        reason,
+                        page.url,
+                        form,
+                    )
 
             if not form["submit"]:
                 await collect_application_debug(page)
