@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.9.8",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.8/job-agent-2.9.8-macos.zip",
-      "sha256": "40ec3a1d7728a352b7054dd5d941accc1fcccae8e6e9f8d742b1eacbda18b179",
-      "notes": "Job Agent v2.9.8 beta introduces the first transparent Smart Scoring readiness gate: for automatic APPLY, ordinary target Data/Business Analyst roles now require candidate_fit >= 10, while clearly junior/intern/trainee target roles require >= 6. A high title/overall match without sufficient skill evidence becomes REVIEW rather than automatic APPLY, and explicit user-approved REVIEW preparation remains available subject to existing safety gates. Skills readiness minimum/blockers, matched and missing skills are retained in Dashboard snapshots and logged separately from the numeric relevance score. Pending Jobs.cz PRE_APPLY_CONFIRMATION_REQUIRED handoffs are no longer retried by the automatic search, preserving the manual follow-up link and history. GitHub Actions: 57 tests passed; final Submit remains manual.",
+      "version": "2.9.9",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.9/job-agent-2.9.9-macos.zip",
+      "sha256": "954b1f3b27a66c139b98ef4af9f121d297a6558dcf0426cc0ebdc16d8b0020f8",
+      "notes": "Job Agent v2.9.9 beta adds explicit required-vs-preferred skill identification for vacancy descriptions in Czech and English. General technology mentions and nice-to-have skills no longer create mandatory skill penalties. Explicit must-have skills absent from the candidate profile (or listed only at basic proficiency) are displayed as missing required skills and block automatic APPLY in favor of REVIEW; the user retains human-controlled REVIEW preparation, subject to existing experience/evidence/location safety checks. Required and preferred skills plus blockers are kept in local Dashboard vacancy snapshots. The run summary now distinguishes new Jobs.cz manual handoffs from total pending manual follow-ups, avoiding the misleading pending=0 line while an earlier Sanofi application is still awaiting human action. User log from v2.9.8 confirmed one manually submitted Group Reporting Specialist application to Penta Hospitals CZ. 61 offline regression tests passed in GitHub Actions. Final employer Submit remains manual.",
       "min_version": "2.3.1"
     }
   }

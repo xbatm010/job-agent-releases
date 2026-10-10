@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 37,
   "version": "2.9.9",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent v2.9.9 beta adds explicit required-vs-preferred skill identification for vacancy descriptions in Czech and English. General technology mentions and nice-to-have skills no longer create mandatory skill penalties. Explicit must-have skills absent from the candidate profile (or listed only at basic proficiency) are displayed as missing required skills and block automatic APPLY in favor of REVIEW; the user retains human-controlled REVIEW preparation, subject to existing experience/evidence/location safety checks. Required and preferred skills plus blockers are kept in local Dashboard vacancy snapshots. The run summary now distinguishes new Jobs.cz manual handoffs from total pending manual follow-ups, avoiding the misleading pending=0 line while an earlier Sanofi application is still awaiting human action. User log from v2.9.8 confirmed one manually submitted Group Reporting Specialist application to Penta Hospitals CZ. 61 offline regression tests passed in GitHub Actions. Final employer Submit remains manual.",
-  "last_published": "2.9.8",
-  "last_sha256": "40ec3a1d7728a352b7054dd5d941accc1fcccae8e6e9f8d742b1eacbda18b179"
+  "last_published": "2.9.9",
+  "last_sha256": "954b1f3b27a66c139b98ef4af9f121d297a6558dcf0426cc0ebdc16d8b0020f8"
 }
