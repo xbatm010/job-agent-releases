@@ -259,6 +259,10 @@ EXPANDED_TITLE_PATTERNS = [
     r"\bautomation\b.*\b(?:trainee|intern(?:ship)?|student|support)\b",
     r"\b(?:trainee|intern(?:ship)?|student|support)\b.*\bautomation\b",
     r"\bcloud\b.*\bdata\s+analytics\b",
+    # Internships where BI/analytics appears before (or after) the entry marker.
+    # Expanded rather than target: full-description data-skill gates still apply.
+    r"\b(?:analytics?|data|reporting|power\s*bi|business\s+intelligence)\b.*\b(?:intern(?:ship)?|trainee|student)\b",
+    r"\b(?:intern(?:ship)?|trainee|student)\b.*\b(?:analytics?|data|reporting|power\s*bi|business\s+intelligence)\b",
 ]
 
 ADJACENT_TITLE_PATTERNS = [
@@ -7290,8 +7294,24 @@ async def prepare_single_job(job):
     return status, reason, current_url, form
 
 
+def current_agent_version():
+    """Use packaged version metadata instead of a stale hard-coded banner."""
+    candidates = [Path(__file__).resolve().parent / "version.json"]
+    bundle = getattr(__import__("sys"), "_MEIPASS", None)
+    if bundle:
+        candidates.append(Path(bundle) / "version.json")
+    for path in candidates:
+        try:
+            version = str(json.loads(path.read_text(encoding="utf-8")).get("version", "")).strip()
+            if version:
+                return version
+        except (OSError, ValueError, AttributeError, TypeError):
+            continue
+    return os.getenv("JOB_AGENT_VERSION", "unknown")
+
+
 async def main():
-    print("🚀 Starting Job Agent v2.9.1 — three-source data-role discovery")
+    print(f"🚀 Starting Job Agent v{current_agent_version()} — three-source data-role discovery")
     print(f"🔍 SEARCH_ONLY: {SEARCH_ONLY}")
     print(f"📄 CV: {Path(CV_PATH).resolve()}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
