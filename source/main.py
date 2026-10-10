@@ -1106,14 +1106,78 @@ def enrich_job(job, session):
     job["role_class"] = role_class(job.get("actual_title") or job["title"])
     return job
 
-def skill_required(text, skill):
-    t = (text or "").lower()
-    s = re.escape(skill.lower())
-    patterns = [
-        rf"(required|must have|must|požadujeme|požadavky|expect|we need|experience|proficiency|znalost|vyžad).{{0,350}}\b{s}\b",
-        rf"\b{s}\b.{{0,350}}(required|must have|must|požadujeme|požadavky|expect|we need|experience|proficiency|znalost|vyžad)",
+# Explicit requirement signals, not generic "Requirements", "experience" or
+# "what we expect" headings. Rendered job pages often flatten headings, so
+# only an explicit phrase near the skill is trusted for automatic decisions.
+MANDATORY_SKILL_MARKER = re.compile(
+    r"\b(?:must(?:\s+have)?|required|require(?:s|d)?|mandatory|essential"
+    r"|požadujeme|vyžadujeme|nutn[áéý]|nezbytn[áéý]|podm[ií]nkou)\b",
+    re.I,
+)
+PREFERRED_SKILL_MARKER = re.compile(
+    r"\b(?:nice[\s-]+to[\s-]+have|good[\s-]+to[\s-]+have|preferred"
+    r"|optional|advantage|bonus|a\s+plus|v[yý]hodou|v[ií]t[aá]n[áéý]"
+    r"|nen[ií]\s+podm[ií]nkou)\b",
+    re.I,
+)
+
+
+def explicit_skill_requirements(description):
+    """Detect only clearly marked required/preferred skills in vacancy text.
+
+    Returns (required, preferred); unqualified technology mentions count
+    toward broad relevance but NOT toward evidence of a must-have skill.
+    The closest explicit marker wins; a marker in another sentence is ignored.
+    """
+    text = str(description or "")
+    markers = [
+        (match.start(), match.end(), "required")
+        for match in MANDATORY_SKILL_MARKER.finditer(text)
+    ] + [
+        (match.start(), match.end(), "preferred")
+        for match in PREFERRED_SKILL_MARKER.finditer(text)
     ]
-    return any(re.search(p, t, re.I) for p in patterns)
+    required, preferred = set(), set()
+    for skill, aliases in SKILL_ALIASES.items():
+        mentions = []
+        for alias in aliases:
+            token = alias.strip()
+            if not token:
+                continue
+            pattern = r"(?<!\w)" + re.escape(token) + r"(?!\w)"
+            mentions.extend(re.finditer(pattern, text, re.I))
+        for found in mentions:
+            candidates = []
+            for begin, end, label in markers:
+                if end <= found.start():
+                    distance = found.start() - end
+                    intervening = text[end:found.start()]
+                    if distance > 90:
+                        continue
+                elif begin >= found.end():
+                    distance = begin - found.end()
+                    intervening = text[found.end():begin]
+                    if distance > 35:
+                        continue
+                else:
+                    continue
+                if re.search(r"[.!?\n]", intervening):
+                    continue
+                candidates.append((distance, label))
+            if not candidates:
+                continue
+            label = min(candidates, key=lambda item: item[0])[1]
+            if label == "required":
+                required.add(skill)
+            else:
+                preferred.add(skill)
+    return sorted(required), sorted(preferred - required)
+
+
+def skill_required(text, skill):
+    """Backward-compatible conservative check for an explicit must-have."""
+    required, _ = explicit_skill_requirements(text)
+    return skill in required
 
 def experience_penalties(text):
     patterns = [
@@ -1349,20 +1413,19 @@ def score_job(job):
             matched.append(skill)
             candidate_fit += level_points[level]
 
-    marker = re.search(
-        r"(requirements|required|must have|what we expect|požadujeme|požadavky|your profile)(.{0,2200})",
-        text, re.I
+    required_skills, preferred_skills = explicit_skill_requirements(
+        job.get("description", "")
     )
-    requirement_zone = marker.group(2) if marker else text
-
+    # Do not turn optional technology names or surrounding benefits text
+    # into mandatory gaps. Basic knowledge is displayed explicitly instead
+    # of silently pretending it meets a full proficiency requirement.
     gaps = []
-    for skill in ["python", "power bi", "tableau", "snowflake", "pandas", "r"]:
+    for skill in required_skills:
         level = CANDIDATE["skills"].get(skill)
-        if skill_required(requirement_zone, skill):
-            if level is None:
-                gaps.append(skill)
-            elif level == "basic":
-                gaps.append(f"{skill} (basic)")
+        if level is None:
+            gaps.append(skill)
+        elif level == "basic":
+            gaps.append(f"{skill} (basic)")
 
     candidate_fit = max(0, min(35, candidate_fit - min(8, len(gaps) * 2)))
 
@@ -1428,6 +1491,11 @@ def score_job(job):
     expanded_signals = expanded_assessment["signals"]
     expanded_fit_min = expanded_assessment["candidate_fit_min"]
     expanded_apply_blockers = list(expanded_assessment["blockers"])
+    if rc == "expanded" and gaps:
+        expanded_apply_blockers.append(
+            "missing_required_skills=" + ", ".join(gaps)
+        )
+        expanded_eligible = False
     target_fit_min = (
         TARGET_ENTRY_MIN_CANDIDATE_FIT if entry_signal
         else TARGET_MIN_CANDIDATE_FIT
@@ -1436,6 +1504,10 @@ def score_job(job):
     if rc == "target" and candidate_fit < target_fit_min:
         target_apply_blockers.append(
             f"candidate_fit={candidate_fit} < {target_fit_min}"
+        )
+    if rc == "target" and gaps:
+        target_apply_blockers.append(
+            "missing_required_skills=" + ", ".join(gaps)
         )
     if rc == "expanded" and score < EXPANDED_APPLY_SCORE:
         expanded_apply_blockers.append(f"score={score} < {EXPANDED_APPLY_SCORE}")
@@ -1523,8 +1595,12 @@ def score_job(job):
         reasons.insert(1, f"expanded_candidate_fit_min={expanded_fit_min}")
     if matched:
         reasons.append("matched=" + ", ".join(matched))
+    if required_skills:
+        reasons.append("explicit_required_skills=" + ", ".join(required_skills))
+    if preferred_skills:
+        reasons.append("explicit_preferred_skills=" + ", ".join(preferred_skills))
     if gaps:
-        reasons.append("gaps=" + ", ".join(gaps))
+        reasons.append("missing_required_skills=" + ", ".join(gaps))
     if hard_experience:
         reasons.append("3+ years experience risk")
     if evidence != "strong":
@@ -1544,6 +1620,8 @@ def score_job(job):
         "evidence_verified": evidence_verified,
         "matched": matched,
         "gaps": gaps,
+        "required_skills": required_skills,
+        "preferred_skills": preferred_skills,
         "hard_experience": hard_experience,
         "soft_experience_penalty": soft_exp_penalty,
         "verified_target_promotion": verified_target_promotion,
@@ -1686,6 +1764,8 @@ def save_status(job, status, score, reason):
         "target_apply_blockers": job.get("target_apply_blockers", []),
         "matched": job.get("matched", []),
         "gaps": job.get("gaps", []),
+        "required_skills": job.get("required_skills", []),
+        "preferred_skills": job.get("preferred_skills", []),
         "expanded_candidate_fit_min": job.get("expanded_candidate_fit_min"),
         "expanded_apply_blockers": job.get("expanded_apply_blockers", []),
         "expanded_signals": job.get("expanded_signals", []),
@@ -7735,7 +7815,10 @@ async def main():
     print(f"Queued APPLY candidates: {len(queue)}")
     print(f"Attempted this run: {len(run_results)}")
     print(f"Confirmed submissions: {submitted_count}")
-    print(f"Pending manual Jobs.cz handoffs: {len(manual_handoffs)}")
+    print(
+        f"Pending manual Jobs.cz handoffs: {len(manual_handoffs)} "
+        f"(new this run; total still pending: {len(load_pending_manual_handoffs())})"
+    )
     for job, handoff_url in manual_handoffs:
         print(
             f"   Manual follow-up: {job.get('actual_title') or job.get('title')}"
