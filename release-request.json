@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 33,
-  "version": "2.9.5",
+  "publish": true,
+  "request_id": 34,
+  "version": "2.9.6",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v2.9.5 beta improves relevance-first vacancy discovery: prioritize junior, internship and trainee data/IT roles before detail-page enrichment; skip clearly excluded senior postings; interleave sources within priority tiers to preserve Jobs.cz, Prace.cz and StartupJobs.cz coverage; score all eligible deduplicated results in the bounded enrichment pool before selecting the best 36 for review, rather than cutting off by original source order. English Business Analyst is now recognized as an adjacent role, not automatically classified as a Data Analyst. Submitted/archived vacancies remain excluded, and final Submit remains manual. Verified with 46 successful offline regression tests in GitHub Actions.",
+  "notes": "Job Agent v2.9.6 beta fixes two regressions found from real v2.9.5 search logs: (1) analytics, data, reporting and PowerBI internship/trainee titles are recognized as expanded entry-level opportunities, with existing strong-evidence and data-skill safety gates retained, rather than being incorrectly discarded as unrelated; (2) the agent's startup journal reads the packaged version.json so the runtime version matches the installed release, instead of always saying v2.9.1. Five actual manual submissions were confirmed in the prior run; final employer Submit stays manual. GitHub Actions: 48 offline tests passed.",
   "last_published": "2.9.5",
   "last_sha256": "bfb70148c5bdebe704f0d7aae5c53723c725b0d64e023932f2f7c33f71c52daa"
 }
