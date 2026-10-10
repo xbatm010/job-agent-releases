@@ -268,6 +268,87 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["sources"]["startupjobs.cz"]["status"], "error")
         self.assertTrue(any("incomplete" in d for d in status["sources"]["startupjobs.cz"]["details"]))
 
+    async def test_first_name_selector_does_not_match_czech_surname(self):
+        from bs4 import BeautifulSoup
+        page = BeautifulSoup(
+            '<input name="prijmeno" value="Surname">'
+            '<input name="jmeno" value="">'
+            '<input name="příjmení" value="Surname">'
+            '<input name="jméno" value="">',
+            "html.parser",
+        )
+        matches = [
+            inp for selector in main.FIRST_NAME_SELECTORS
+            for inp in page.select(selector)
+        ]
+        self.assertEqual({x["name"] for x in matches}, {"jmeno", "jméno"})
+        self.assertNotIn("prijmeno", {x["name"] for x in matches})
+        self.assertNotIn("příjmení", {x["name"] for x in matches})
+
+    async def test_manual_name_read_only_validation_requires_unique_correct_field(self):
+        class Input:
+            def __init__(self, value, metadata):
+                self.value = value
+                self.metadata = metadata
+
+            async def is_visible(self):
+                return True
+
+            async def is_disabled(self):
+                return False
+
+            async def get_attribute(self, key):
+                return "text" if key == "type" else None
+
+            async def input_value(self):
+                return self.value
+
+        inputs = [
+            Input("TestFirst", "surname"),
+            Input("", "unknown field"),
+            Input("TestFirst", "opaque text field"),
+        ]
+        loc = SimpleNamespace(count=AsyncMock(return_value=3),
+                              nth=lambda i: inputs[i])
+        frame = SimpleNamespace(locator=lambda _: loc)
+        with patch.dict(main.CANDIDATE, {"first_name": "TestFirst"}), \
+                patch.object(main, "page_contexts", AsyncMock(return_value=[frame])), \
+                patch.object(main, "input_metadata",
+                             AsyncMock(side_effect=lambda el: el.metadata)):
+            self.assertTrue(await main.manually_verified_first_name(object()))
+            inputs[1].value = "TestFirst"
+            self.assertFalse(await main.manually_verified_first_name(object()))
+            inputs[1].value = ""
+            inputs[2].value = ""
+            self.assertFalse(await main.manually_verified_first_name(object()))
+
+    async def test_manual_first_name_completion_is_bounded_and_never_submits(self):
+        page = SimpleNamespace(wait_for_timeout=AsyncMock())
+        form = {"first_name": False, "submit": True, "cv": True}
+        with patch.multiple(main, MANUAL_SUBMIT_HOLD=True, MANUAL_NAME_WAIT_SECONDS=2), \
+                patch.object(main, "manually_verified_first_name",
+                             AsyncMock(side_effect=[False, True])) as verified, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(await main.manual_first_name_fallback(page, form))
+        self.assertEqual(verified.await_count, 2)
+        page.wait_for_timeout.assert_awaited_once_with(1000)
+        self.assertTrue(form["first_name"])
+        self.assertEqual(form["first_name_source"], "manual_unique_visible_input")
+        self.assertFalse(hasattr(page, "click"))
+
+    async def test_manual_name_fallback_times_out_and_respects_disabled_hold(self):
+        page = SimpleNamespace(wait_for_timeout=AsyncMock())
+        with patch.multiple(main, MANUAL_SUBMIT_HOLD=False, MANUAL_NAME_WAIT_SECONDS=2), \
+                patch.object(main, "manually_verified_first_name", AsyncMock()) as verify:
+            self.assertFalse(await main.manual_first_name_fallback(page, {}))
+            verify.assert_not_awaited()
+        with patch.multiple(main, MANUAL_SUBMIT_HOLD=True, MANUAL_NAME_WAIT_SECONDS=2), \
+                patch.object(main, "manually_verified_first_name",
+                             AsyncMock(return_value=False)) as verify, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(await main.manual_first_name_fallback(page, {}))
+            self.assertEqual(verify.await_count, 2)
+
     async def test_submission_confirmation_requires_success_evidence(self):
         def fake_page(url, message="Application details"):
             return SimpleNamespace(
