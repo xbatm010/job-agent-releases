@@ -103,6 +103,28 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ranked[0]["job_id"], "1003")
         self.assertEqual(ranked[0]["decision"], "APPLY")
 
+    async def test_analytics_powerbi_internship_is_not_discarded_as_other(self):
+        title = "Analytics and PowerBI Development Intern"
+        self.assertEqual(main.role_class(title), "expanded")
+        job = vacancy(title)
+        self.assertGreater(main.pre_enrichment_relevance_tier(job), 1)
+        result = main.score_job(job)
+        self.assertEqual(result["role_class"] if "role_class" in result else main.role_class(title), "expanded")
+        self.assertGreater(result["score"], 42)
+        self.assertNotEqual(result["decision"], "SKIP")
+        self.assertEqual(main.role_class("Junior Esims Trader"), "other")
+        self.assertEqual(main.role_class("Senior PowerBI Development Intern"), "excluded")
+
+    async def test_version_banner_uses_packaged_metadata(self):
+        root = Path(self.state.name)
+        path = root / "version.json"
+        path.write_text(json.dumps({"version": "2.9.6", "channel": "beta"}))
+        with patch.object(main, "__file__", str(root / "main.py")):
+            self.assertEqual(main.current_agent_version(), "2.9.6")
+            path.write_text('bad json')
+            with patch.dict(os.environ, {"JOB_AGENT_VERSION": "fallback-version"}):
+                self.assertEqual(main.current_agent_version(), "fallback-version")
+
     async def test_search_only_saves_apply_without_cv_or_form_preparation(self):
         job = vacancy()
         prepare = AsyncMock()
