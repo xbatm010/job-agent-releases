@@ -107,6 +107,72 @@ class ExpandedScoringTests(ScoringDefaults, unittest.TestCase):
         self.assertEqual(result["candidate_fit"], 0)
         self.assertNotEqual(result["decision"], "APPLY")
 
+    def test_explicit_required_and_optional_skills_are_distinguished(self):
+        required, preferred = main.explicit_skill_requirements(
+            "We require SQL and Tableau. Nice to have Snowflake and Power BI."
+        )
+        self.assertEqual(required, ["sql", "tableau"])
+        self.assertEqual(preferred, ["power bi", "snowflake"])
+        self.assertTrue(main.skill_required("Must have Tableau", "tableau"))
+        self.assertFalse(main.skill_required("Nice to have Tableau", "tableau"))
+        self.assertEqual(
+            main.explicit_skill_requirements(
+                "What we expect: experience with Tableau. "
+                "We offer training in Python and Excel."
+            ),
+            ([], []),
+        )
+
+    def test_mandatory_unfamiliar_technology_blocks_automatic_apply(self):
+        job = vacancy("Group Reporting Specialist", job_id="2001431065")
+        job["description"] = (
+            "SQL Excel statistical analysis Power BI reporting "
+            "data quality analytics Prague English Czech. "
+            + "Our team prepares monthly dashboard reports. " * 40
+            + "Must have Snowflake."
+        )
+        job["evidence_quality"] = "strong"
+        result = main.score_job(job)
+        self.assertEqual(result["candidate_fit"], 16)
+        self.assertIn("snowflake", result["required_skills"])
+        self.assertIn("snowflake", result["gaps"])
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertIn("missing_required_skills=snowflake",
+                      result["expanded_apply_blockers"])
+
+    def test_optional_or_unqualified_technology_does_not_block_apply(self):
+        job = vacancy("Group Reporting Specialist", job_id="2001431065")
+        job["description"] = (
+            "SQL Excel statistical analysis Power BI reporting "
+            "data quality analytics Prague English Czech. "
+            + "Our team prepares monthly dashboard reports. " * 40
+            + "Nice to have Snowflake."
+        )
+        job["evidence_quality"] = "strong"
+        result = main.score_job(job)
+        self.assertEqual(result["decision"], "APPLY")
+        self.assertIn("snowflake", result["preferred_skills"])
+        self.assertEqual(result["gaps"], [])
+        job["description"] = job["description"].replace(
+            "Nice to have Snowflake.", "Tools: Snowflake."
+        )
+        result = main.score_job(job)
+        self.assertEqual(result["decision"], "APPLY")
+        self.assertEqual(result["required_skills"], [])
+        self.assertEqual(result["gaps"], [])
+
+    def test_mandatory_basics_are_labelled_not_assumed_proficient(self):
+        required, preferred = main.explicit_skill_requirements(
+            "Požadujeme znalost SQL a Python. Výhodou Tableau."
+        )
+        self.assertEqual(required, ["python", "sql"])
+        self.assertEqual(preferred, ["tableau"])
+        job = vacancy("Junior Data Analyst")
+        job["description"] += " Must have Power BI."
+        result = main.score_job(job)
+        self.assertIn("power bi (basic)", result["gaps"])
+        self.assertEqual(result["decision"], "REVIEW")
+
     def test_manual_review_score_does_not_block_explicit_preparation(self):
         job = vacancy()
         job.update({
