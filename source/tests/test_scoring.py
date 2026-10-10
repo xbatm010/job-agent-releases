@@ -61,6 +61,52 @@ class ScoringDefaults:
 
 class ExpandedScoringTests(ScoringDefaults, unittest.TestCase):
 
+    def test_target_low_skill_match_is_review_even_with_high_role_score(self):
+        job = vacancy("IT business analytik/analytička", job_id="2001438418")
+        job["description"] = (
+            "Our collaborative team handles daily reporting tasks. " * 32
+            + "SQL Praha English Czech"
+        )
+        job["card_text"] = ""
+        job["evidence_quality"] = "strong"
+        result = main.score_job(job)
+        self.assertEqual(result["role_class"] if "role_class" in result else main.role_class(job["title"]), "target")
+        self.assertEqual(result["candidate_fit"], 6)
+        self.assertGreaterEqual(result["score"], main.MIN_APPLY_SCORE)
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertEqual(result["target_candidate_fit_min"], 10)
+        self.assertIn("candidate_fit=6 < 10", result["target_apply_blockers"])
+        self.assertTrue(main.manual_review_apply_eligible(
+            {**job, **result, "role_class": "target"}, True
+        ))
+
+    def test_target_with_more_skill_evidence_can_still_apply(self):
+        job = vacancy("IT business analytik/analytička")
+        job["description"] = (
+            "Our collaborative team handles daily reporting tasks. " * 32
+            + "SQL Excel Praha English Czech"
+        )
+        job["card_text"] = ""
+        job["evidence_quality"] = "strong"
+        result = main.score_job(job)
+        self.assertEqual(result["candidate_fit"], 10)
+        self.assertEqual(result["decision"], "APPLY")
+        self.assertEqual(result["target_apply_blockers"], [])
+
+    def test_entry_target_allows_six_skill_points_but_not_zero(self):
+        job = vacancy("Junior Data Analyst")
+        job["description"] = "Team tasks and documentation. " * 40 + "SQL Praha English Czech"
+        job["card_text"] = ""
+        job["evidence_quality"] = "strong"
+        result = main.score_job(job)
+        self.assertEqual(result["candidate_fit"], 6)
+        self.assertEqual(result["target_candidate_fit_min"], 6)
+        self.assertEqual(result["decision"], "APPLY")
+        job["description"] = "Team tasks and documentation. " * 40 + "Praha English Czech"
+        result = main.score_job(job)
+        self.assertEqual(result["candidate_fit"], 0)
+        self.assertNotEqual(result["decision"], "APPLY")
+
     def test_manual_review_score_does_not_block_explicit_preparation(self):
         job = vacancy()
         job.update({
