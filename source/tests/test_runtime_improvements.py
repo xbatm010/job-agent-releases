@@ -172,6 +172,24 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(main.should_continue_after_application(status))
         self.assertTrue(main.should_continue_after_application("SUBMITTED_MANUALLY"))
 
+    async def test_employer_link_company_prefix_is_removed_only_for_legal_names(self):
+        self.assertEqual(
+            main.clean_browser_employer_label("Company EP Commodities, a.s."),
+            "EP Commodities, a.s.",
+        )
+        self.assertEqual(
+            main.clean_browser_employer_label("Company Example s.r.o."),
+            "Example s.r.o.",
+        )
+        self.assertEqual(
+            main.clean_browser_employer_label("Company of Heroes"),
+            "Company of Heroes",
+        )
+        self.assertEqual(
+            main.clean_browser_employer_label("Company Software"),
+            "Company Software",
+        )
+
     async def test_role_title_fragment_is_not_company(self):
         self.assertFalse(main.valid_company("analytička", "meta"))
         self.assertFalse(main.valid_company("Business Analyst", "meta"))
