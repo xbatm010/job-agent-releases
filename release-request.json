@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 39,
-  "version": "2.9.11",
+  "publish": true,
+  "request_id": 40,
+  "version": "2.9.12",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v2.9.11 beta follows a successful real macOS run of v2.9.10: 173 vacancies discovered; 3/3 Jobs.cz applications manually submitted and confirmed (Treasury Data Analyst at EP Commodities, Data Analyst CVM at MONETA Money Bank, and Marketing Data Analyst at Siemens). The new manual first-name fallback worked on the live Siemens employer microsite. Adds a 'Требуют внимания' Dashboard filter to quickly find unresolved partially filled applications (such as earlier VIG Re) and sensitive pending manual handoffs (such as Sanofi) without showing submitted or archived vacancies. Existing Prepare Now and Continue Manually controls are retained and all final submissions remain human-controlled. Cleans a generic employer-link UI label ('Company EP Commodities, a.s.' -> 'EP Commodities, a.s.') without changing structured employer names. 67 offline regression tests passed in GitHub Actions. No changes to automatic applicant submission or scoring.",
+  "notes": "Job Agent v2.9.12 beta improves useful follow-ups after zero automatic APPLY candidates. Based on v2.9.11 Mac run: 172 discovered, 108 enriched, 104 deduplicated/scored, 36 shortlisted; 12 REVIEW and zero APPLY after 40 previously processed applications. This is expected strict scoring, not a search failure. If no APPLY exists, Job Agent reports how many REVIEW candidates remain and up to three high-scoring, evidence-verified, Prague/remote-safe, supported Jobs.cz/Prace.cz human-review suggestions with skill-fit blockers and original job URLs. Users can explicitly select them in Dashboard and press Prepare now, which re-checks all safety gates. REVIEW is never promoted automatically, no application form opens just to show suggestions, and final Submit remains manual. Replaces misleading red 'No vacancy qualifies' message with clear 'No new vacancy qualifies for automatic APPLY'. GitHub Actions offline suite: 69/69 tests passed, including end-to-end no-automatic-form-opening regression.",
   "last_published": "2.9.11",
   "last_sha256": "4410a25295c88517ee7502eb0652b9d060a6edec7de5e26e5603476cf6ef23c8"
 }
