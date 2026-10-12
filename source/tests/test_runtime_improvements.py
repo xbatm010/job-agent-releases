@@ -172,6 +172,83 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(main.should_continue_after_application(status))
         self.assertTrue(main.should_continue_after_application("SUBMITTED_MANUALLY"))
 
+    async def test_search_card_recovers_cez_employer_from_correlated_logo(self):
+        html = """
+        <article>
+          <h2><a href="/rpd/2001283488/">Specialista/ka datové kvality (Data Quality)</a></h2>
+          <img src="/images/preview.svg" alt="Skupina ČEZ">
+          <ul><li>Skupina ČEZ</li><li>Praha – Michle</li></ul>
+        </article>
+        """
+        jobs = main.parse_search(html, "data quality")
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["job_id"], "2001283488")
+        self.assertEqual(jobs[0]["company"], "Skupina ČEZ")
+        self.assertEqual(jobs[0]["company_source"], "search_card")
+
+    async def test_employer_logo_rejects_unrelated_images_and_vacancy_title(self):
+        bs = main.BeautifulSoup
+        title = "Specialista/ka datové kvality (Data Quality)"
+        decorative = bs(f"""
+            <article><img src="/images/office.jpg" alt="Home Office">
+            <img src="/assets/logo.png" alt="{title}"></article>
+        """, "html.parser").article
+        self.assertEqual(main.employer_from_logo(decorative, title), "")
+        explicit = bs(
+            '<article><img src="/logos/cez.svg" alt="Logo společnosti Skupina ČEZ">'
+            '</article>', "html.parser",
+        ).article
+        self.assertEqual(main.employer_from_logo(explicit, title), "Skupina ČEZ")
+        self.assertEqual(main.normalized_employer_logo_label("logo firmy"), "")
+        self.assertEqual(main.normalized_employer_logo_label(title, title), "")
+
+    async def test_employer_from_details_company_logo_but_not_generic_alt(self):
+        bs = main.BeautifulSoup
+        page = bs(
+            '<div class="company-logo">'
+            '<img src="/graphics/cez.svg" alt="Skupina ČEZ"></div>',
+            "html.parser",
+        )
+        self.assertEqual(main.extract_company(page), "Skupina ČEZ")
+        empty = bs(
+            '<div class="company-logo"><img src="/icons/generic.svg" alt="Logo firmy">'
+            '</div>', "html.parser",
+        )
+        self.assertEqual(main.extract_company(empty), "")
+
+    async def test_browser_logo_fallback_is_read_only_and_employer_scoped(self):
+        class Locator:
+            def __init__(self, selector):
+                self.selector = selector
+                self.first = self
+
+            async def count(self):
+                return 1 if 'img[alt],' in self.selector else 0
+
+            def nth(self, index):
+                self._nth = index
+                return self
+
+            async def is_visible(self):
+                return True
+
+            async def get_attribute(self, name):
+                return "Logo společnosti Skupina ČEZ" if name == "alt" else None
+
+            async def inner_text(self):
+                return ""
+
+        page = SimpleNamespace(
+            url="https://www.jobs.cz/rpd/2001283488/",
+            evaluate=AsyncMock(return_value=""),
+            locator=lambda sel: Locator(sel),
+            title=AsyncMock(return_value=""),
+        )
+        with patch.object(main, "page_contexts", AsyncMock(return_value=[page])):
+            company, source = await main.extract_company_from_page(page)
+        self.assertEqual(company, "Skupina ČEZ")
+        self.assertEqual(source, "browser_employer_logo")
+
     async def test_employer_link_company_prefix_is_removed_only_for_legal_names(self):
         self.assertEqual(
             main.clean_browser_employer_label("Company EP Commodities, a.s."),
