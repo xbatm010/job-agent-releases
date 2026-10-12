@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 40,
-  "version": "2.9.12",
+  "publish": true,
+  "request_id": 41,
+  "version": "2.9.13",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v2.9.12 beta improves useful follow-ups after zero automatic APPLY candidates. Based on v2.9.11 Mac run: 172 discovered, 108 enriched, 104 deduplicated/scored, 36 shortlisted; 12 REVIEW and zero APPLY after 40 previously processed applications. This is expected strict scoring, not a search failure. If no APPLY exists, Job Agent reports how many REVIEW candidates remain and up to three high-scoring, evidence-verified, Prague/remote-safe, supported Jobs.cz/Prace.cz human-review suggestions with skill-fit blockers and original job URLs. Users can explicitly select them in Dashboard and press Prepare now, which re-checks all safety gates. REVIEW is never promoted automatically, no application form opens just to show suggestions, and final Submit remains manual. Replaces misleading red 'No vacancy qualifies' message with clear 'No new vacancy qualifies for automatic APPLY'. GitHub Actions offline suite: 69/69 tests passed, including end-to-end no-automatic-form-opening regression.",
+  "notes": "Job Agent v2.9.13 beta improves employer detection after the real v2.9.12 macOS run: 173 vacancies discovered, 13 REVIEW, 0 automated APPLY; the improved REVIEW shortlist supported 2/2 successful human-confirmed Jobs.cz submissions (BI Specialista – SQL a reporting at cbData s.r.o., score 74; Specialista/ka datové kvality score 70). The latter vacancy (Jobs.cz 2001283488) did not identify its employer in Job Agent; public Jobs.cz listings display Skupina ČEZ for this title. The app now recovers employer names from employer logos only when a company/logo marker or a matching nearby label confirms the context, supports image-only company blocks in detail HTML and employer microsites, and ignores decorative images, generic logo labels, location names and job titles. No company is hard-coded. 73/73 offline regressions passed in GitHub Actions; no change to scoring or final manual Submit safety.",
   "last_published": "2.9.12",
   "last_sha256": "02985ceba19388065b5aa9ffb39633d7a4e381d50535c37632b192eaa8751040"
 }
