@@ -49,6 +49,49 @@ class DesktopTests(unittest.TestCase):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
 
+    def test_needs_attention_filter_shows_incomplete_forms_and_manual_handoffs(self):
+        self.records[0]["status"] = "FORM_PARTIALLY_FILLED"
+        self.records[0]["title"] = "Data Governance and Data Quality Specialist"
+        self.records[1]["status"] = "FORM_PARTIALLY_FILLED"  # submitted in history
+        self.records.append(dict(
+            job_id="job:2001443223",
+            title="Sanofi PowerBI Intern",
+            company="Sanofi", score=79, decision="APPLY",
+            status="PRE_APPLY_CONFIRMATION_REQUIRED",
+            source="jobs.cz",
+            url="https://www.jobs.cz/rpd/2001443223/",
+            handoff_url="https://www.jobs.cz/externi-jof/2001443223/",
+        ))
+        self.records.append(dict(
+            job_id="job:2000000005", title="Old archived incomplete",
+            company="Old", score=62, decision="REVIEW",
+            status="FORM_PARTIALLY_FILLED", source="jobs.cz",
+        ))
+        self.overrides["job:2000000005"] = {"decision": "INACTIVE"}
+        self.window._refresh_dashboard()
+        self.assertIn("ATTENTION", self.window.extra_filter_actions)
+        self.window.extra_filter_actions["ATTENTION"].trigger()
+        self.assertEqual(
+            {r["job_id"] for r in self.window.dashboard_records},
+            {"job:2000000001", "job:2001443223"},
+        )
+        partial_index = next(
+            i for i, r in enumerate(self.window.dashboard_records)
+            if r["job_id"] == "job:2000000001"
+        )
+        self.window.dashboard_table.selectRow(partial_index)
+        self.assertTrue(self.window.prepare_now_btn.isEnabled())
+        sanofi_index = next(
+            i for i, r in enumerate(self.window.dashboard_records)
+            if r["job_id"] == "job:2001443223"
+        )
+        self.window.dashboard_table.selectRow(sanofi_index)
+        self.assertTrue(self.window.detail_actions[10].isEnabled())
+        self.records[0]["status"] = "SUBMITTED_MANUALLY"
+        self.records[-2]["status"] = "SUBMITTED_MANUALLY"
+        self.window._refresh_dashboard()
+        self.assertEqual(len(self.window.dashboard_records), 0)
+
     def test_inactive_vacancy_hidden_and_restorable_in_filter(self):
         self.overrides["job:2000000001"] = {"decision": "INACTIVE"}
         self.window._refresh_dashboard()
