@@ -942,6 +942,55 @@ def valid_company(name, source="generic"):
 
     return True
 
+def normalized_employer_logo_label(alt, title=""):
+    """Accept meaningful employer-logo alt text, never a role or generic icon."""
+    label = clean(alt)
+    label = clean(re.sub(
+        r"^logo(?:\s+(?:firmy|společnosti|company))?\s*[:\-]?\s*",
+        "", label, flags=re.I,
+    ))
+    if not label or normalize_key_text(label) == normalize_key_text(title):
+        return ""
+    if normalize_key_text(label) in {
+        "logo", "logo firmy", "company", "company logo",
+        "employer", "avatar", "obrazek", "ikona", "image",
+    }:
+        return ""
+    return label if valid_company(label, "search_card") else ""
+
+
+def employer_from_logo(container, title=""):
+    """Require a logo/company marker or an identical nearby text label."""
+    if container is None:
+        return ""
+    for img in container.select("img[alt]"):
+        if str(img.get("aria-hidden", "")).lower() == "true":
+            continue
+        name = normalized_employer_logo_label(img.get("alt", ""), title)
+        if not name:
+            continue
+        parent = img.parent
+        hints = " ".join([
+            " ".join(img.get("class", [])),
+            str(img.get("src", "")),
+            str(img.get("data-testid", "")),
+            " ".join(parent.get("class", [])) if hasattr(parent, "get") else "",
+        ]).lower()
+        explicit_logo = bool(re.search(
+            r"logo|company|employer|brand|firma|zam[eě]stnavatel", hints,
+            re.I,
+        ))
+        corroborated = any(
+            normalize_key_text(clean(node.get_text(" ", strip=True)))
+            == normalize_key_text(name)
+            for node in container.select("li, span, p, strong, a")
+            if len(clean(node.get_text(" ", strip=True))) <= 100
+        )
+        if explicit_logo or corroborated:
+            return name
+    return ""
+
+
 def extract_company(soup):
     for script in soup.find_all("script", type=re.compile(r"ld\+json", re.I)):
         raw = script.string or script.get_text()
@@ -977,6 +1026,9 @@ def extract_company(soup):
             name = clean(el.get_text(" ", strip=True))
             if valid_company(name):
                 return name
+            logo = employer_from_logo(el)
+            if logo:
+                return logo
     return ""
 
 def extract_company_from_search_card(article, title=""):
@@ -1008,7 +1060,7 @@ def extract_company_from_search_card(article, title=""):
                     return name
         except Exception:
             pass
-    return ""
+    return employer_from_logo(article, title)
 
 
 def parse_search(html, query):
@@ -2625,6 +2677,31 @@ async def extract_company_from_page(page):
             except Exception:
                 pass
 
+    # Image-only employer logos on Jobs.cz employer microsites. No page actions.
+    logo_selectors = (
+        '[itemprop="hiringOrganization"] img[alt], '
+        '[data-testid*="company" i] img[alt], '
+        '[data-testid*="employer" i] img[alt], '
+        '[class*="company" i] img[alt], '
+        '[class*="employer" i] img[alt], '
+        'a[href*="/firma/"] img[alt], '
+        'a[href*="/zamestnavatel/"] img[alt], '
+        'img[src*="logo" i][alt]'
+    )
+    for frame in await page_contexts(page):
+        try:
+            logos = frame.locator(logo_selectors)
+            for i in range(min(await logos.count(), 30)):
+                img = logos.nth(i)
+                if not await img.is_visible():
+                    continue
+                name = normalized_employer_logo_label(
+                    await img.get_attribute("alt") or "", h1_text,
+                )
+                if name:
+                    return name, "browser_employer_logo"
+        except Exception:
+            continue
     return "", "not_detected"
 
 
