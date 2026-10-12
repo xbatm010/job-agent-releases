@@ -946,7 +946,7 @@ def normalized_employer_logo_label(alt, title=""):
     """Accept meaningful employer-logo alt text, never a role or generic icon."""
     label = clean(alt)
     label = clean(re.sub(
-        r"^logo(?:\s+(?:firmy|společnosti|company))?\s*[:\-]?\s*",
+        r"^logo\b(?:\s+(?:firmy|společnosti|company))?\s*[:\-]?\s*",
         "", label, flags=re.I,
     ))
     if not label or normalize_key_text(label) == normalize_key_text(title):
