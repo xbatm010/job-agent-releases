@@ -235,6 +235,78 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("job:2001443223", main.load_pending_manual_handoffs())
         self.assertIn("job:2001443223", main.load_processed())
 
+    async def test_no_apply_suggestions_only_include_safe_manual_review_options(self):
+        def review(jid, score, **fields):
+            return {
+                "job_id": jid, "title": f"Analyst {jid}",
+                "source": "jobs.cz", "role_class": "target",
+                "score": score, "decision": "REVIEW", "candidate_fit": 6,
+                "evidence_quality": "strong", "location_gate": "prague_area",
+                "target_apply_blockers": ["candidate_fit=6 < 10"],
+                "url": f"https://www.jobs.cz/rpd/{jid}/",
+                **fields,
+            }
+        candidates = [
+            review("s1", 90, source="startupjobs.cz"),
+            review("unsafe", 85, location_gate="location_unknown"),
+            review("weak", 82, evidence_quality="weak"),
+            review("hard", 81, hard_experience=True),
+            review("a", 74, role_class="expanded", expanded_apply_blockers=["candidate_fit=8 < 12"]),
+            review("b", 70),
+            review("c", 69),
+            review("d", 67),
+            review("submitted", 100, decision="SKIP"),
+        ]
+        suggested = main.safe_manual_review_candidates(candidates)
+        self.assertEqual([j["job_id"] for j in suggested], ["a", "b", "c"])
+        self.assertEqual(main.safe_manual_review_candidates(candidates, 0), [])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            main.print_manual_review_suggestions(candidates)
+        self.assertIn("REVIEW candidates: 8", output.getvalue())
+        self.assertIn("candidate_fit=8 < 12", output.getvalue())
+        self.assertIn("Dashboard", output.getvalue())
+        self.assertNotIn("Analyst unsafe", output.getvalue())
+
+    async def test_no_apply_run_saves_review_and_never_opens_application_form(self):
+        job = vacancy("Data Analyst", job_id="2001475720")
+        job["description"] = "SQL Excel and reporting. " * 50
+        cv = Path(self.state.name) / "fixture-cv.txt"
+        cv.write_text("CV")
+        attempted = AsyncMock()
+        output = io.StringIO()
+        previous = Path.cwd()
+        try:
+            os.chdir(self.state.name)
+            with patch.multiple(main, SEARCH_ONLY=False, CV_PATH=str(cv)), \
+                    patch.object(main, "discover_all", AsyncMock(return_value=[job])), \
+                    patch.object(main, "enrich_job", side_effect=lambda j, _: j), \
+                    patch.object(main, "browser_recover_weak_evidence",
+                                 AsyncMock(side_effect=lambda x: x)), \
+                    patch.object(main, "score_job", return_value={
+                        "score": 74, "decision": "REVIEW", "role_class": "target",
+                        "candidate_fit": 6, "evidence_quality": "strong",
+                        "target_apply_blockers": ["candidate_fit=6 < 10"],
+                        "reasons": ["insufficient skill readiness"],
+                    }), \
+                    patch.object(main, "location_gate",
+                                 return_value=(True, "prague_area", "Praha")), \
+                    patch.object(main, "prepare_application", attempted), \
+                    contextlib.redirect_stdout(output):
+                await main.main()
+        finally:
+            os.chdir(previous)
+        attempted.assert_not_awaited()
+        self.assertIn("No new vacancy qualifies for automatic APPLY", output.getvalue())
+        self.assertIn("safe manual-review suggestions: 1", output.getvalue())
+        self.assertIn("Data Analyst", output.getvalue())
+        records = [
+            json.loads(line)
+            for line in main.VACANCIES_FILE.read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(records[-1]["decision"], "REVIEW")
+        self.assertEqual(records[-1]["status"], "REVIEW_PENDING")
+
     async def test_search_only_saves_apply_without_cv_or_form_preparation(self):
         job = vacancy()
         prepare = AsyncMock()

@@ -2284,6 +2284,60 @@ def select_discovery_candidates(jobs, processed, inactive_ids, limit):
     return chosen[:max(0, limit)]
 
 
+def safe_manual_review_candidates(ranked, limit=3):
+    """Present good REVIEW jobs without bypassing any automatic APPLY guard.
+
+    This is informational only; clicking Prepare now in Dashboard still
+    re-enriches and independently verifies evidence, location, and experience.
+    """
+    allowed_locations = {
+        "prague_area", "prague_area_mentioned",
+        "full_remote", "location_gate_disabled",
+    }
+    candidates = [
+        job for job in ranked
+        if str(job.get("decision", "")).upper() == "REVIEW"
+        and application_source_supported(job)
+        and str(job.get("role_class", "")).lower() in {"target", "expanded"}
+        and str(job.get("evidence_quality", "")).lower() == "strong"
+        and not bool(job.get("hard_experience"))
+        and str(job.get("location_gate", "")).lower() in allowed_locations
+    ]
+    return sorted(candidates, key=lambda job: -int(job.get("score") or 0))[:max(0, limit)]
+
+
+def print_manual_review_suggestions(ranked, limit=3):
+    """Report best human-review opportunities; never enqueue or submit them."""
+    all_review = sum(
+        str(job.get("decision", "")).upper() == "REVIEW" for job in ranked
+    )
+    suggestions = safe_manual_review_candidates(ranked, limit)
+    print(f"🔎 REVIEW candidates: {all_review}; safe manual-review suggestions: {len(suggestions)}")
+    for index, job in enumerate(suggestions, 1):
+        blockers = (job.get("target_apply_blockers") or []) + (
+            job.get("expanded_apply_blockers") or []
+        )
+        print(
+            f"   {index}. [{job.get('source')}] "
+            f"{job.get('actual_title') or job.get('title', '')} "
+            f"| score={job.get('score', 0)}/100 "
+            f"| candidate_fit={job.get('candidate_fit', '-')} "
+            f"| reason={'; '.join(blockers) or 'manual review advised'} "
+            f"| {job.get('url') or 'open from Dashboard'}"
+        )
+    if suggestions:
+        print(
+            "   ℹ️ Review these vacancies in Dashboard → Prepare now. "
+            "The agent re-checks all safety gates; final Submit stays manual."
+        )
+    elif all_review:
+        print(
+            "   ℹ️ Other REVIEW records remain visible in Dashboard. "
+            "Some lack verified evidence, supported application source, "
+            "or confirmed Prague/remote location."
+        )
+
+
 def select_review_shortlist(ranked, limit):
     """Score the full enriched pool, then keep useful decisions first."""
     return sorted(
@@ -7791,6 +7845,9 @@ async def main():
             "; ".join(job.get("reasons", [])),
         )
 
+    if not apply_candidates:
+        print_manual_review_suggestions(ranked)
+
     if SEARCH_ONLY:
         for job in apply_candidates:
             save_status(job, "READY_TO_PREPARE", job["score"], "; ".join(job.get("reasons", [])))
@@ -7798,7 +7855,10 @@ async def main():
         return
 
     if not apply_candidates:
-        print("\n❌ No vacancy currently qualifies for APPLY.")
+        print(
+            "\n✅ No new vacancy qualifies for automatic APPLY. "
+            "No application forms were opened."
+        )
         return
 
     queue = apply_candidates[:MAX_APPLICATIONS_PER_RUN]
