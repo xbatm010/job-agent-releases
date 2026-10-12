@@ -2410,6 +2410,21 @@ async def page_contexts(page):
     return list(page.frames)
 
 
+def clean_browser_employer_label(name):
+    """Remove an obvious UI prefix only when a legal employer name follows.
+
+    Do not change structured hiringOrganization names or unmarked brands.
+    """
+    name = clean(name)
+    m = re.match(r"^Company\s+(.+)$", name, re.I)
+    if m and re.search(
+        r"(?:a\.?s\.?|s\.?\s*r\.?\s*o\.?|gmbh|ltd|inc)\s*$",
+        m.group(1), re.I,
+    ):
+        return m.group(1)
+    return name
+
+
 async def extract_company_from_page(page):
     # 1. Structured JobPosting data is the best source.
     try:
@@ -2552,7 +2567,7 @@ async def extract_company_from_page(page):
                     href_name = company_from_fp_url(urljoin(page.url, href))
                     if href_name and valid_company(href_name, "url_slug"):
                         return href_name, "employer_href_slug"
-                    return txt, "browser_employer_link"
+                    return clean_browser_employer_label(txt), "browser_employer_link"
             except Exception:
                 pass
 
