@@ -318,6 +318,24 @@ def canonical_local_job_id(job_id: str, url: str = "") -> str:
     return raw
 
 
+FOLLOW_UP_STATUSES = {
+    "PRE_APPLY_CONFIRMATION_REQUIRED",
+    "FORM_PARTIALLY_FILLED",
+    "CV_ATTACHMENT_REQUIRED",
+    "FORM_READY_NO_SUBMIT_CONTROL",
+    "JOBS_HANDOFF_PARTIALLY_FILLED",
+    "JOBS_HANDOFF_NO_CONTINUE",
+    "READY_FOR_MANUAL_SUBMIT",
+    "NEEDS_MANUAL_REVIEW",
+}
+
+
+def vacancy_needs_attention(record):
+    """Manual follow-ups without a verified final submission."""
+    status = str(record.get("status", "")).upper().strip()
+    return status in FOLLOW_UP_STATUSES and status not in TERMINAL_STATUSES
+
+
 def terminal_job_ids() -> set[str]:
     out = set()
     if not HISTORY_FILE.exists():
@@ -1051,7 +1069,7 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_search.addAction(ui_icon("search", "#69758d", 20), QLineEdit.LeadingPosition)
         self.dashboard_search.setClearButtonEnabled(True)
         self.dashboard_decision_filter = QComboBox(self)
-        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Неактивные", "INACTIVE"), ("Отправлены", "SUBMITTED"), ("Можно в очередь", "Manual queue eligible")]:
+        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Неактивные", "INACTIVE"), ("Отправлены", "SUBMITTED"), ("Требуют внимания", "ATTENTION"), ("Можно в очередь", "Manual queue eligible")]:
             self.dashboard_decision_filter.addItem(label, value)
         self.dashboard_decision_filter.hide()
         self.dashboard_source_filter = QComboBox(self)
@@ -1086,7 +1104,7 @@ class JobAgentWindow(QMainWindow):
             self.source_filter_actions[value] = action
         filter_menu.addSeparator()
         self.extra_filter_actions = {}
-        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("Manual queue eligible", "Можно в очередь")]:
+        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("ATTENTION", "Требуют внимания"), ("Manual queue eligible", "Можно в очередь")]:
             action = filter_menu.addAction(label)
             action.setCheckable(True)
             action.triggered.connect(lambda checked=False, v=value: self._select_decision_filter(v))
@@ -1677,6 +1695,8 @@ class JobAgentWindow(QMainWindow):
             return True
         if selected == "SUBMITTED":
             return status in TERMINAL_STATUSES
+        if selected == "ATTENTION":
+            return vacancy_needs_attention(record)
         if selected == "Manual queue eligible":
             return display_decision in {"REVIEW", "QUEUED"}
         return display_decision == selected
