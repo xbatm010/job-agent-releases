@@ -2464,15 +2464,66 @@ def print_manual_review_suggestions(ranked, limit=3):
 
 
 def select_review_shortlist(ranked, limit):
-    """Score the full enriched pool, then keep useful decisions first."""
-    return sorted(
-        ranked,
-        key=lambda j: (
-            str(j.get("decision", "")).upper() == "SKIP",
-            -int(j.get("score", 0)),
-            str(j.get("decision", "")).upper() != "APPLY",
-        ),
-    )[:max(0, limit)]
+    """Keep Data/BI visible alongside Support and QA in the saved shortlist.
+
+    The 3.0.4 global-score cut pushed almost every data vacancy out of the
+    Dashboard because generic support descriptions earned large role scores.
+    Reserve half the finite review budget for Data/BI, about one third for IT
+    Support, and the remainder for QA. Only non-SKIP rows earn reserved slots;
+    unfilled slots go to the strongest remaining matches across all tracks.
+    Existing Data-only behavior is unchanged when Support/QA search is off.
+    No candidate's decision, CV choice or submission guard is changed.
+    """
+    limit = max(0, int(limit))
+    if not limit:
+        return []
+
+    def priority(job):
+        decision = str(job.get("decision", "")).upper()
+        return (
+            decision == "SKIP",
+            decision != "APPLY",
+            -int(job.get("score") or 0),
+        )
+
+    ordered = sorted(ranked, key=priority)
+    if not SEARCH_SUPPORT_QA:
+        return ordered[:limit]
+
+    def track(job):
+        title = job.get("actual_title") or job.get("title") or ""
+        kind = str(job.get("role_track") or "")
+        if kind not in {"support", "qa"}:
+            kind = support_qa_track(title) or "data"
+        return kind
+
+    data_slots = (limit + 1) // 2
+    qa_slots = limit // 6
+    support_slots = limit - data_slots - qa_slots
+    budgets = {"data": data_slots, "support": support_slots, "qa": qa_slots}
+    selected = []
+    picked = set()
+    for group, allowance in budgets.items():
+        for job in ordered:
+            if len([x for x in selected if track(x) == group]) >= allowance:
+                break
+            if track(job) != group or str(job.get("decision", "")).upper() == "SKIP":
+                continue
+            if id(job) in picked:
+                continue
+            selected.append(job)
+            picked.add(id(job))
+
+    # Fill unused reserved slots by the global ranking; SKIP never displaces
+    # an eligible APPLY/REVIEW candidate. Keep application-ready rows first
+    # within their own categories and display the shortlist in useful order.
+    for job in ordered:
+        if len(selected) >= limit:
+            break
+        if id(job) not in picked:
+            selected.append(job)
+            picked.add(id(job))
+    return sorted(selected, key=priority)[:limit]
 
 
 async def discover_all(session):
