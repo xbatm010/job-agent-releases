@@ -1166,7 +1166,7 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_search.addAction(ui_icon("search", "#69758d", 20), QLineEdit.LeadingPosition)
         self.dashboard_search.setClearButtonEnabled(True)
         self.dashboard_decision_filter = QComboBox(self)
-        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Неактивные", "INACTIVE"), ("Отправлены", "SUBMITTED"), ("Требуют внимания", "ATTENTION"), ("Можно в очередь", "Manual queue eligible")]:
+        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Неактивные", "INACTIVE"), ("Отправлены", "SUBMITTED"), ("Ответы работодателей", "RESPONDED"), ("Требуют внимания", "ATTENTION"), ("Можно в очередь", "Manual queue eligible")]:
             self.dashboard_decision_filter.addItem(label, value)
         self.dashboard_decision_filter.hide()
         self.dashboard_source_filter = QComboBox(self)
@@ -1201,7 +1201,7 @@ class JobAgentWindow(QMainWindow):
             self.source_filter_actions[value] = action
         filter_menu.addSeparator()
         self.extra_filter_actions = {}
-        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("ATTENTION", "Требуют внимания"), ("Manual queue eligible", "Можно в очередь")]:
+        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("ATTENTION", "Требуют внимания"), ("RESPONDED", "Ответы работодателей"), ("Manual queue eligible", "Можно в очередь")]:
             action = filter_menu.addAction(label)
             action.setCheckable(True)
             action.triggered.connect(lambda checked=False, v=value: self._select_decision_filter(v))
@@ -1288,6 +1288,12 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_detail = VacancyDetail()
         self.dashboard_detail.setPlainText("Выбери вакансию, чтобы увидеть описание и причины оценки.")
         detail_layout.addWidget(self.dashboard_detail, 1)
+        self.response_summary = QLabel("")
+        self.response_summary.setObjectName("Muted")
+        self.response_summary.setTextFormat(Qt.PlainText)
+        self.response_summary.setWordWrap(True)
+        self.response_summary.hide()
+        detail_layout.addWidget(self.response_summary)
         dash_buttons = QGridLayout()
         dash_buttons.setSpacing(10)
         self.detail_buttons_layout = dash_buttons
@@ -1326,6 +1332,9 @@ class JobAgentWindow(QMainWindow):
             action = menu.addAction(label)
             action.triggered.connect(callback)
             self.detail_actions.append(action)
+        menu.addSeparator()
+        self.response_action = menu.addAction("Отметить ответ работодателя…")
+        self.response_action.triggered.connect(self._edit_response_tracking)
         more.setMenu(menu)
         self.more_job_btn = more
         detail_layout.addLayout(dash_buttons)
@@ -1700,6 +1709,8 @@ class JobAgentWindow(QMainWindow):
             self.open_job_btn.setEnabled(False)
             self.prepare_now_btn.setEnabled(False)
             self.more_job_btn.setEnabled(False)
+            self.response_summary.hide()
+            self.response_action.setEnabled(False)
             return
         overrides = load_job_overrides()
         decision = display_decision(record, overrides)
@@ -1709,6 +1720,22 @@ class JobAgentWindow(QMainWindow):
             self._detail_signature = signature
         running = bool(self.agent_process and self.agent_process.is_alive())
         terminal = decision == "SUBMITTED"
+        response = load_response_tracking().get(
+            canonical_local_job_id(record.get("job_id", ""), record.get("url", "")),
+            {},
+        )
+        if terminal:
+            stage = RESPONSE_STAGES.get(response.get("stage", "WAITING"), "Ожидаем ответ")
+            summary = f"Этап после отправки: {stage}"
+            if response.get("next_date"):
+                summary += f" · Следующая дата: {response['next_date']}"
+            if response.get("notes"):
+                note = response["notes"]
+                summary += f" · Заметка: {note[:120]}" + ("…" if len(note) > 120 else "")
+            self.response_summary.setText(summary)
+            self.response_summary.show()
+        else:
+            self.response_summary.hide()
         supported = self._application_source_supported(record)
         self.open_job_btn.setEnabled(bool(record.get("url")))
         self.more_job_btn.setEnabled(True)
@@ -1746,6 +1773,7 @@ class JobAgentWindow(QMainWindow):
         for index in (1, 2, 3, 6):
             self.detail_actions[index].setEnabled(not running and not terminal and not inactive)
         self.prepare_now_btn.setEnabled(self.prepare_now_btn.isEnabled() and not inactive)
+        self.response_action.setEnabled(terminal and not running and not inactive)
         self.detail_actions[0].setEnabled(
             not running and not terminal and not inactive and supported
             and record.get("decision") == "REVIEW"
@@ -1792,6 +1820,11 @@ class JobAgentWindow(QMainWindow):
             return True
         if selected == "SUBMITTED":
             return status in TERMINAL_STATUSES
+        if selected == "RESPONDED":
+            return (
+                status in TERMINAL_STATUSES
+                and record.get("response_stage", "WAITING") not in {"WAITING", ""}
+            )
         if selected == "ATTENTION":
             return vacancy_needs_attention(record)
         if selected == "Manual queue eligible":
@@ -1804,11 +1837,13 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_all_records = load_vacancy_records()
         overrides = load_job_overrides()
         submitted_ids = terminal_job_ids()
+        responses = load_response_tracking()
         for record in self.dashboard_all_records:
             canonical = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
             if canonical in submitted_ids:
                 record["status"] = "SUBMITTED_MANUALLY"
                 record["decision"] = "APPLY"
+            record["response_stage"] = responses.get(canonical, {}).get("stage", "WAITING")
         self.dashboard_records = [r for r in self.dashboard_all_records if self._dashboard_record_matches_filters(r, overrides)]
         self.dashboard_table.blockSignals(True)
         self.dashboard_table.setRowCount(len(self.dashboard_records))
@@ -1821,7 +1856,13 @@ class JobAgentWindow(QMainWindow):
                 str(record.get("title", "")) + "\n" + (record.get("company") or "Компания не определена"),
                 str(record.get("source") or "—"),
                 str(record.get("score", "—")) + "/100",
-                DECISION_LABELS.get(decision, decision),
+                DECISION_LABELS.get(decision, decision)
+                + (
+                    "\n" + RESPONSE_STAGES[record["response_stage"]]
+                    if decision == "SUBMITTED"
+                    and record.get("response_stage", "WAITING") not in {"", "WAITING"}
+                    else ""
+                ),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
