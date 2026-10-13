@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 43,
-  "version": "2.9.15",
+  "publish": true,
+  "request_id": 44,
+  "version": "2.9.16",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v2.9.15 beta fixes a new false employer label from the real v2.9.14 Mac log. On Jobs.cz Master Data Specialist (job 2001457607), a certification graphic appeared as company 'Top Employer 2026' after an earlier navigation-logo bug 'Domů' was fixed. The app now conservatively rejects exact generic employer-award/certification labels including Top Employer(s), Certified Top Employer, Best Employer, Great Place to Work, Zaměstnavatel roku and Nejlepší zaměstnavatel with year/region suffixes, across employer logo alt texts, search cards, rendered pages, metadata, DOM and structured data. Whole-label matching avoids rejecting real employers such as Skupina ČEZ, TE Connectivity and Top Employer Solutions s.r.o. When no supported company name is present, display unknown instead of guessing. No score or application-safety changes; final Submit stays manual. All 79 offline regression tests passed in GitHub Actions.",
+  "notes": "Job Agent v2.9.16 beta introduces a human-controlled employer response tracker for submitted applications. In the Dashboard, confirmed submitted vacancies now expose 'Отметить ответ работодателя…' where the user can separately record awaiting reply, recruiter contacted, interview scheduled, interview completed, rejection, offer or withdrawal, with notes and an optional next date/time. A new 'Ответы работодателей' filter surfaces recorded replies, and the vacancy detail/row displays their stage. All recruitment progress is manual, stored atomically in ~/.job_agent/employer_responses.json independently from historical applications.csv and all application statuses; it never sends email or changes employer final-submit safeguards. The previous v2.9.15 run verified the Master Data Specialist false employer badge issue was fixed ('company not detected' rather than 'Domů' or 'Top Employer 2026'); 173 discovered, 104 scored, 10 REVIEW, 0 APPLY, 42 previously processed, 1 pending manual Sanofi Jobs.cz handoff. No background email access or auto-replies. GitHub Actions 81/81 offline tests passed including UI and persistence safety regressions.",
   "last_published": "2.9.15",
   "last_sha256": "042d6ba7e45a8e60e0bcaaf36797bb011b8045c8298254da76415425c6f66a6d"
 }
