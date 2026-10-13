@@ -131,6 +131,85 @@ class SupportQaTrackTests(unittest.TestCase):
         self.assertIn("Junior IT Support", main.SUPPORT_QA_SEARCH_QUERIES)
         self.assertTrue(any(r == "/nabidky/tester/" for _,r in main.SUPPORT_QA_PRACE_SEARCH_ROUTES))
 
+    def test_sales_support_in_czech_is_not_it_helpdesk(self):
+        for title in (
+            "Technická podpora prodeje - Specialista/ka technických nabídek",
+            "TECHNICKÁ PODPORA PRODEJE",
+            "Sales Support Specialist",
+            "Presales IT Support",
+        ):
+            with self.subTest(title=title):
+                self.assertIsNone(support_qa_track(title))
+                self.assertNotIn(
+                    main.score_job(vacancy(title)).get("role_track"),
+                    {"support", "qa"},
+                )
+
+    def test_non_junior_support_review_is_not_misleadingly_88_points(self):
+        result = main.score_job(vacancy("IT podpora uživatelů", SUPPORT_DESCRIPTION))
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertLessEqual(result["score"], 69)
+        self.assertIn("junior/trainee/L1 marker absent", result["target_apply_blockers"])
+
+    def test_generic_l1_support_requires_actual_practical_signal(self):
+        text = ("L1 IT support to end users with user support, "
+                "technical documentation, Windows and macOS. ") * 30
+        result = main.score_job(vacancy("L1 IT Support Specialist", text))
+        self.assertEqual(result["decision"], "REVIEW")
+        self.assertLessEqual(result["score"], 69)
+        self.assertIn("no concrete diagnostic/test evidence", result["target_apply_blockers"])
+
+    def test_review_shortlist_reserves_data_support_and_qa_slots(self):
+        jobs = []
+        for group, name, count, score in [
+            ("data", "Junior Data Analyst", 35, 60),
+            ("support", "IT Support Technician", 35, 69),
+            ("qa", "Manual Tester", 12, 68),
+        ]:
+            for idx in range(count):
+                jobs.append({
+                    "title": name, "job_id": f"{group}-{idx}",
+                    "role_track": group, "decision": "REVIEW", "score": score,
+                })
+        shortlist = main.select_review_shortlist(jobs, 36)
+        self.assertEqual(len(shortlist), 36)
+        self.assertEqual(
+            {group: sum(x["role_track"] == group for x in shortlist)
+             for group in ("data", "support", "qa")},
+            {"data": 18, "support": 12, "qa": 6},
+        )
+        with patch.object(main, "SEARCH_SUPPORT_QA", False):
+            unbalanced = main.select_review_shortlist(jobs, 36)
+        self.assertEqual(unbalanced[0]["role_track"], "support")
+
+    def test_shortlist_unused_qa_quota_fills_with_other_jobs(self):
+        jobs = []
+        for group, count in [("data", 25), ("support", 25), ("qa", 2)]:
+            for idx in range(count):
+                jobs.append({
+                    "title": group, "role_track": group,
+                    "job_id": f"{group}-{idx}",
+                    "decision": "REVIEW", "score": 60 + idx,
+                })
+        shortlist = main.select_review_shortlist(jobs, 36)
+        self.assertEqual(len(shortlist), 36)
+        self.assertEqual(len(set(x["job_id"] for x in shortlist)), 36)
+        self.assertGreaterEqual(sum(x["role_track"] == "data" for x in shortlist), 18)
+        self.assertEqual(sum(x["role_track"] == "qa" for x in shortlist), 2)
+
+    def test_shortlist_does_not_fill_reserved_slots_with_skip(self):
+        rows = [
+            {"title": "Junior Data Analyst", "job_id": f"skip-{i}",
+             "role_track": "data", "decision": "SKIP", "score": 0}
+            for i in range(30)
+        ] + [
+            {"title": "Junior QA Tester", "job_id": f"qa-{i}",
+             "role_track": "qa", "decision": "REVIEW", "score": 65}
+            for i in range(40)
+        ]
+        shortlist = main.select_review_shortlist(rows, 36)
+        self.assertTrue(all(r["decision"] == "REVIEW" for r in shortlist))
+
     def test_search_prioritization_includes_qa_support(self):
         job = vacancy("Junior QA Tester", QA_DESCRIPTION)
         self.assertGreater(main.discovery_priority(job), main.discovery_priority(vacancy("Accountant", "Accounts payable.")))

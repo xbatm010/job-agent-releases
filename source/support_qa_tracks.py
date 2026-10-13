@@ -26,7 +26,11 @@ QA_PATTERNS = (
 BLOCKED_PATTERNS = (
     r"\b(?:penetration|security|pentest|ethical hacking|cybersecurity)\b",
     r"\b(?:game tester|gaming qa)\b",
-    r"\b(?:customer service|call center|telesales|sales support)\b",
+    r"\b(?:customer service|call center|telesales|sales support|presales)\b",
+    # Czech commercial/technical sales support is not IT helpdesk.
+    r"\b(?:technicka podpora prodeje|podpora prodeje|obchodni podpora|"
+    r"technicke nabidky|obchodnich nabidek)\b",
+    r"\btechnical sales(?: support)?\b",
 )
 ENTRY_PATTERNS = (
     r"\b(?:junior|trainee|intern|internship|graduate|entry level|l1|level 1|first line|"
@@ -49,6 +53,14 @@ QA_SIGNAL_PATTERNS = {
 }
 # These are positive signals supported by the candidate's education and
 # Job Agent personal project. Do not imply formal industry employment.
+# Generic IT and communications vocabulary alone is not hands-on technical
+# evidence. A concrete diagnostic / ticket / network / test signal is required
+# before preparing a user-facing form; otherwise the job stays for review.
+PRACTICAL_SIGNALS = {
+    "support": {"troubleshooting", "incident_tickets", "basic_network"},
+    "qa": {"manual_testing", "regression", "test_cases", "defect_tracking", "web_testing", "api_sql"},
+}
+
 CANDIDATE_FAMILIAR = {
     "support": {"troubleshooting", "user_communication", "technical_support", "incident_tickets"},
     "qa": {"manual_testing", "regression", "defect_tracking", "web_testing", "api_sql"},
@@ -107,6 +119,8 @@ def support_qa_assessment(job, hard_experience=False):
         blockers.append("fewer than 2 independent role signals")
     if len(matched) < 2:
         blockers.append("fewer than 2 familiar skill signals")
+    if not PRACTICAL_SIGNALS[track].intersection(signals):
+        blockers.append("no concrete diagnostic/test evidence")
     if advanced_required:
         blockers.append("advanced mandatory technical requirements")
     candidate_fit = min(30, len(matched) * 8)
@@ -122,6 +136,12 @@ def support_qa_assessment(job, hard_experience=False):
         decision = "REVIEW"
     else:
         decision = "SKIP"
+    # A REVIEW with a generic Support description must never outrank a fully
+    # qualified APPLY simply because generic words inflated its raw score.
+    if decision == "REVIEW":
+        score = min(score, 69)
+    elif decision == "SKIP":
+        score = min(score, 39)
     return {
         "score": int(score),
         "decision": decision,
