@@ -2099,6 +2099,7 @@ class JobAgentWindow(QMainWindow):
         self.gmail_status_label.setText("Gmail: отключён")
 
     def _show_gmail_candidates(self, rows):
+        """Show user-readable job names and a plain-text, read-only preview."""
         if not rows:
             QMessageBox.information(
                 self, "Gmail",
@@ -2107,54 +2108,137 @@ class JobAgentWindow(QMainWindow):
                 "Это не означает, что ответов нет. Статусы не менялись.",
             )
             return
+
         dialog = QDialog(self)
         dialog.setWindowTitle("Gmail · Возможные ответы работодателей")
-        dialog.resize(860, 460)
+        dialog.resize(1060, 620)
         layout = QVBoxLayout(dialog)
         intro = QLabel(
-            "Это только предположения на основе отправленных заявок, "
-            "заголовков писем и коротких фрагментов. "
-            "После проверки письма отметьте этап отклика вручную."
+            "Результаты ориентировочные: автоподтверждение не является ответом "
+            "рекрутера. Просмотрите оригинал в Gmail, прежде чем вручную "
+            "отмечать этап отклика."
         )
         intro.setTextFormat(Qt.PlainText)
         intro.setWordWrap(True)
         layout.addWidget(intro)
-        table = self._new_table(["Тема письма", "Отправитель", "Вакансия", "Совпадение"])
+
+        table = self._new_table(["Письмо и отправитель", "Вакансия и компания", "Предполагаемый тип"])
         table.setRowCount(len(rows))
+        table.setMinimumHeight(200)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         for row_id, result in enumerate(rows):
-            for col, value in enumerate((
-                result["subject"], result["sender"], result["job_id"],
-                result["reason"],
-            )):
-                item = QTableWidgetItem(str(value))
-                item.setToolTip(str(value))
-                item.setData(Qt.UserRole, result["thread_id"])
+            subject = str(result.get("subject") or "Без темы")
+            sender = str(result.get("sender") or "Отправитель не определён")
+            title = str(result.get("job_title") or result.get("job_id") or "Вакансия")
+            company = str(result.get("job_company") or "Компания не определена")
+            category = str(result.get("category_label") or "Требуется проверка")
+            entries = (
+                (subject + "\n" + sender, subject + "\n" + sender),
+                (title + "\n" + company, title + "\n" + company + "\n" + str(result.get("job_id", ""))),
+                (category, category),
+            )
+            for col, (value, tip) in enumerate(entries):
+                item = QTableWidgetItem(value)
+                item.setToolTip(tip)
+                item.setData(Qt.UserRole, str(result.get("thread_id", "")))
                 table.setItem(row_id, col, item)
-        layout.addWidget(table)
+            table.setRowHeight(row_id, 68)
+        layout.addWidget(table, 2)
+
+        preview_title = QLabel("Фрагмент письма (не полный текст)")
+        preview_title.setTextFormat(Qt.PlainText)
+        layout.addWidget(preview_title)
+        preview = QTextEdit(dialog)
+        preview.setObjectName("gmail_message_preview")
+        preview.setReadOnly(True)
+        preview.setMinimumHeight(110)
+        preview.setMaximumHeight(170)
+        layout.addWidget(preview)
+
+        def selected_result():
+            idx = table.currentRow()
+            return rows[idx] if 0 <= idx < len(rows) else None
+
+        def update_preview():
+            row = selected_result()
+            if row is None:
+                preview.clear()
+                return
+            preview.setPlainText(
+                "Тема: " + str(row.get("subject") or "Без темы")
+                + "\nОтправитель: " + str(row.get("sender") or "—")
+                + "\nСовпадение: " + str(row.get("reason") or "—")
+                + "\nПредположение: " + str(row.get("category_label") or "Требуется проверка")
+                + "\n\n" + str(row.get("snippet") or "Фрагмент недоступен. Откройте письмо в Gmail.")
+            )
+        table.itemSelectionChanged.connect(update_preview)
+
         controls = QHBoxLayout()
         open_email = QPushButton("Открыть письмо в Gmail")
+
         def open_selected():
-            idx = table.currentRow()
-            if idx < 0:
+            row = selected_result()
+            if row is None:
                 return
-            thread_id = str(rows[idx]["thread_id"])
-            # The thread identifier comes from the Gmail API; accept hex only.
+            thread_id = str(row.get("thread_id") or "")
+            # Never concatenate unchecked data into an external URL.
             if thread_id and all(x in "0123456789abcdefABCDEF" for x in thread_id):
                 QDesktopServices.openUrl(
                     QUrl("https://mail.google.com/mail/u/0/#all/" + thread_id)
                 )
+
         open_email.clicked.connect(open_selected)
         controls.addWidget(open_email)
+
+        update_stage = QPushButton("Отметить этап вручную…")
+        update_stage.setObjectName("Outline")
+
+        def open_stage_editor():
+            row = selected_result()
+            if row is None:
+                return
+            jid = str(row.get("job_id") or "")
+            # Stage editor still requires explicit human approval in its own dialog.
+            dialog.accept()
+            QTimer.singleShot(0, lambda job_id=jid: self._open_gmail_stage_editor(job_id))
+
+        update_stage.clicked.connect(open_stage_editor)
+        controls.addWidget(update_stage)
         controls.addStretch()
         close = QPushButton("Закрыть")
         close.clicked.connect(dialog.accept)
         controls.addWidget(close)
         layout.addLayout(controls)
-        if rows:
-            table.selectRow(0)
+        table.selectRow(0)
+        update_preview()
         dialog.exec()
+
+    def _open_gmail_stage_editor(self, job_id):
+        """Navigate to the confirmed submission, then show existing manual editor."""
+        jid = canonical_local_job_id(job_id)
+        if jid not in self._current_submitted_ids:
+            QMessageBox.information(
+                self, "Gmail", "Этап можно изменить только для отправленного отклика.",
+            )
+            return
+        if not any(
+            canonical_local_job_id(record.get("job_id", ""), record.get("url", "")) == jid
+            for record in self.dashboard_all_records
+        ):
+            QMessageBox.information(
+                self, "Gmail", "Вакансия больше не отображается в базе. "
+                "История отправленных откликов сохранена.",
+            )
+            return
+        self._show_all_vacancies()
+        for index, record in enumerate(self.dashboard_records):
+            if canonical_local_job_id(record.get("job_id", ""), record.get("url", "")) == jid:
+                self.dashboard_table.selectRow(index)
+                self._edit_response_tracking()
+                return
+        QMessageBox.information(self, "Gmail", "Не удалось открыть карточку вакансии.")
 
     def _update_run_mode(self):
         self.start_btn.setText("Начать поиск" if self.search_only_check.isChecked() else "Найти и подготовить")
