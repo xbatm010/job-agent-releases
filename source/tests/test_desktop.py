@@ -142,6 +142,10 @@ class DesktopTests(unittest.TestCase):
         primary.write_bytes(b"test")
         self.window.cv_edit.setText(str(primary))
         self.window.support_cv_edit.setText(str(primary) + ".invalid")
+        self.window.first_name_edit.setText("Example")
+        self.window.last_name_edit.setText("Candidate")
+        self.window.email_edit.setText("example@example.invalid")
+        self.window.phone_edit.setText("123456789")
         settings = self.window._collect_settings()
         self.assertIn("IT Support / QA", self.window._validate_settings(settings, require_application=True))
 
