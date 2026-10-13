@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 47,
-  "version": "3.0.1",
+  "publish": true,
+  "request_id": 48,
+  "version": "3.0.2",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v3.0.1 beta adds optional Gmail review for replies to already-confirmed applications. Settings > Gmail allows manual Google Desktop OAuth authorization for the gmail.readonly scope; you must supply your own Google Cloud Desktop OAuth JSON (not bundled with the app). Access/refresh tokens are stored in the local macOS Keychain. Applications > Проверить ответы в Gmail initiates a read-only search on demand (up to 40 recent messages from the last 90 days; headers and short snippets only). Suggestions are matched to saved submitted vacancies using unambiguous posting IDs or company and role terms; ambiguous messages are ignored. Review suggestions in a modal, open the original Gmail thread, and record recruiter stage manually. No automatic email sending, status edits, background scans, application submissions, or CV upload to Google. Settings and existing submission history remain compatible. PR #21 GitHub offline regression CI passed all 97 tests; native macOS packaging and real Google authorization require separate verification.",
+  "notes": "Job Agent 3.0.2 beta improves the user-tested Gmail readonly reply review. Candidate messages now show full vacancy title and employer instead of technical job IDs, with a cleaner three-column layout, plain-text snippet preview and conservative advisory categories distinguishing automatic receipt acknowledgments from possible interviews, possible rejections and other selection results. Generic selection-result subjects are never treated as confirmed rejections. New Отметить этап вручную action opens the existing explicit human-approved response editor only for verified submitted jobs; no automatic recruiter stage changes or Gmail writes. The Gmail API remains limited to user-initiated readonly scans of metadata and snippets; no automatic sending, CV upload or background polling. Release tooling now preserves source/gmail_responses.py and source/GMAIL_SETUP.md and fails if imported Gmail modules would be lost from persisted sanitized source. Regression suite: 101/101 passing on GitHub Actions; native macOS build and real user acceptance still need separate verification.",
   "last_published": "3.0.1",
   "last_sha256": "eb0136f655b878585cda89fa368ca3a799d0d7c03bc2248c482d9e4d03ef86b1"
 }
