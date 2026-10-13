@@ -1922,6 +1922,79 @@ class JobAgentWindow(QMainWindow):
             return
         QDesktopServices.openUrl(QUrl(url))
 
+    def _edit_response_tracking(self):
+        """User-entered recruiting progress; never modifies submission history."""
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+        submitted = (
+            str(record.get("status", "")).upper() in TERMINAL_STATUSES
+            or jid in terminal_job_ids()
+        )
+        if not submitted:
+            QMessageBox.information(
+                self, "Ответы работодателей",
+                "Отметить ответ можно только после подтверждённой отправки отклика.",
+            )
+            return
+        if str(load_job_overrides().get(jid, {}).get("decision", "")).upper() == "INACTIVE":
+            return
+
+        existing = load_response_tracking().get(jid, {})
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Ответ работодателя")
+        dialog.setMinimumWidth(450)
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        stage_combo = QComboBox(dialog)
+        stage_combo.setObjectName("response_stage_combo")
+        for stage, label in RESPONSE_STAGES.items():
+            stage_combo.addItem(label, stage)
+        stage_combo.setCurrentIndex(max(
+            0, stage_combo.findData(existing.get("stage", "WAITING"))
+        ))
+        form.addRow("Этап рассмотрения", stage_combo)
+
+        next_date = QLineEdit(dialog)
+        next_date.setObjectName("response_next_date")
+        next_date.setPlaceholderText("ГГГГ-ММ-ДД или ГГГГ-ММ-ДД ЧЧ:ММ")
+        next_date.setText(existing.get("next_date", ""))
+        form.addRow("Следующая дата", next_date)
+
+        notes = QTextEdit(dialog)
+        notes.setObjectName("response_notes")
+        notes.setPlaceholderText("Ответ рекрутера, детали собеседования, дальнейшие шаги…")
+        notes.setPlainText(existing.get("notes", ""))
+        notes.setFixedHeight(110)
+        form.addRow("Заметка", notes)
+        layout.addLayout(form)
+
+        notice = QLabel(
+            "Этапы заполняются только вручную. Job Agent не отправляет ответы "
+            "и не меняет подтверждённый статус отправки.",
+            dialog,
+        )
+        notice.setWordWrap(True)
+        notice.setTextFormat(Qt.PlainText)
+        layout.addWidget(notice)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        try:
+            save_response_tracking(
+                jid, stage_combo.currentData(), notes.toPlainText(),
+                next_date.text(),
+            )
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(dialog, "Ответ работодателя", str(exc))
+            return
+        self._refresh_dashboard()
+
     def _open_pending_handoff(self):
         """Explicit human click only: never continue Jobs.cz handoffs silently."""
         record = self._selected_dashboard_record()
