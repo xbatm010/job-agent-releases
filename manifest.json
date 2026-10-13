@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "3.0.5",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.5/job-agent-3.0.5-macos.zip",
-      "sha256": "937e48401d7df2e34daedc69568169e429ccdc46685faf44de89c3ec62352cbc",
-      "notes": "Job Agent 3.0.5 beta fixes real-world shortlist quality after the user's 3.0.4 SEARCH_ONLY run found 179 vacancies but the final 36 was dominated by Support positions, with inflated scores for generic non-junior IT Support and incorrect Czech sales-support matches. Keep Data/BI as a core lane by reserving up to half the final shortlist for Data/BI, a third for IT Support and the remainder for QA, backfilling unused slots by relevance (never substituting SKIP over APPLY/REVIEW). Require at least one concrete diagnostic, ticket/network or QA testing signal before allowing a Junior/L1 Support/QA form preparation; generic IT/user-communication mentions alone stay REVIEW. Non-qualified Support/QA REVIEW scores are capped at 69 for clarity. Exclude Czech technical sales support and presales titles from IT helpdesk classification. Existing Search/Only mode, manual final Submit, separate Data and Support/QA CV selection, saved application history, Gmail read-only integration and macOS notifications are unchanged. Offline regression CI passed 130/130 tests; real search quality on the user's Mac must be rechecked after the update.",
+      "version": "3.0.6",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.6/job-agent-3.0.6-macos.zip",
+      "sha256": "e54c830e181fe018581a70b4136d815769b932b5191e157f017d38fb6c5b7a68",
+      "notes": "Job Agent 3.0.6 beta improves visibility into search-only outcomes without relaxing recruitment qualification rules. After the user's 3.0.5 run (180 discovered; 108 enriched; 106 scored; 36 kept; 0 ready) and observed processed history increase from 42 to 45, this release prints category diagnostics for Data/BI, IT Support, QA and Other at discovery, enrichment selection, full scoring, APPLY/REVIEW eligible pool, final shortlist and ready-to-prepare list. This allows us to distinguish low supply and prior submissions from scoring over-filtering without inventing candidate experience. When there are no APPLY matches, safe manual-review suggestions diversify across Data/BI, QA, IT Support when available, while retaining hard-experience, evidence, Prague location, and supported-source guards. No changes to scoring thresholds, role-based CV choice, Gmail permissions, history, automatic submission protections or final manual Submit. Offline regression suite: 132 tests passing; run the app in SEARCH_ONLY to examine the new stage counts.",
       "min_version": "2.3.1"
     }
   }

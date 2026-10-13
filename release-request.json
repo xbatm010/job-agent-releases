@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 53,
   "version": "3.0.6",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.6 beta improves visibility into search-only outcomes without relaxing recruitment qualification rules. After the user's 3.0.5 run (180 discovered; 108 enriched; 106 scored; 36 kept; 0 ready) and observed processed history increase from 42 to 45, this release prints category diagnostics for Data/BI, IT Support, QA and Other at discovery, enrichment selection, full scoring, APPLY/REVIEW eligible pool, final shortlist and ready-to-prepare list. This allows us to distinguish low supply and prior submissions from scoring over-filtering without inventing candidate experience. When there are no APPLY matches, safe manual-review suggestions diversify across Data/BI, QA, IT Support when available, while retaining hard-experience, evidence, Prague location, and supported-source guards. No changes to scoring thresholds, role-based CV choice, Gmail permissions, history, automatic submission protections or final manual Submit. Offline regression suite: 132 tests passing; run the app in SEARCH_ONLY to examine the new stage counts.",
-  "last_published": "3.0.5",
-  "last_sha256": "937e48401d7df2e34daedc69568169e429ccdc46685faf44de89c3ec62352cbc"
+  "last_published": "3.0.6",
+  "last_sha256": "e54c830e181fe018581a70b4136d815769b932b5191e157f017d38fb6c5b7a68"
 }
