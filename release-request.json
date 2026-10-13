@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 46,
   "version": "3.0.0",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent v3.0.0 beta introduces opt-in macOS Notification Center reminders for user-entered interview and employer follow-up deadlines. Enable under Settings > Уведомления (off by default). Job Agent checks the existing local employer response tracker only while the app is open. Date-only actions alert during daytime on the due day; exact-time tasks alert on/near deadline, and interviews can alert in the preceding hour. Old overdue tasks remain visible in Applications without generating stale popup spam. A durable local notification journal deduplicates same job/stage/date across refreshes and restarts and limits macOS notifications to three per local day. Native notifications are requested by static AppleScript via osascript argv, with untrusted titles sanitized; no shell interpolation, no AppleScript from vacancy text. Existing applications.csv and employer_responses.json are not mutated by notification delivery, and scoring, human-only final Submit, and no-CAPTCHA behavior are unchanged. No background service or Gmail access is added; real banner display depends on macOS notification permissions. Offline GitHub Actions regression suite: 88/88 passed, including four new tests for preferences, timing, dedup, daily cap and safe arguments.",
-  "last_published": "2.9.17",
-  "last_sha256": "279ab945213dc3bc59c7fa269198109c5e492cdb17c4bf66934ccc588bc2c0ad"
+  "last_published": "3.0.0",
+  "last_sha256": "47bd4ef5aa6c47b0aed6c62a0e014680901d8a0c8606d179c1088ec1f854a08f"
 }
