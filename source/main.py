@@ -115,6 +115,7 @@ MANUAL_REVIEW_APPLY_MIN_SCORE = int(os.getenv("MANUAL_REVIEW_APPLY_MIN_SCORE", "
 MAX_JOBS_TO_REVIEW = int(os.getenv("MAX_JOBS_TO_REVIEW", "36"))
 CV_PATH = os.getenv("CV_PATH", "").strip()
 CV_PATH_DATA = CV_PATH  # Immutable per-run primary CV, even after switching jobs
+ACTIVE_CV_GROUP = "data"
 CV_PATH_SUPPORT_QA = os.getenv("CV_PATH_SUPPORT_QA", "").strip()
 BROWSER_PROFILE_DIR = os.getenv("BROWSER_PROFILE_DIR", "./browser_profile")
 SOURCE_JOBS_CZ = os.getenv("SOURCE_JOBS_CZ", "true").lower() == "true"
@@ -4393,6 +4394,23 @@ def href_is_safe_upload(href):
 
 async def cv_attachment_detected(page):
     """Return True only for concrete evidence that a CV is attached/selected."""
+    if ACTIVE_CV_GROUP == "support_qa":
+        # Saved Jobs.cz profile CVs may still point to an older Data résumé.
+        # For secondary CV routing, require the actual selected filename
+        # or a visible filename match, never an arbitrary checked radio.
+        wanted = Path(CV_PATH).name.casefold()
+        for frame in await page_contexts(page):
+            try:
+                files = frame.locator('input[type="file"]')
+                for i in range(await files.count()):
+                    names = await files.nth(i).evaluate(
+                        "(e) => [...(e.files || [])].map(f => f.name.toLowerCase())"
+                    )
+                    if wanted and wanted in names:
+                        return True
+            except Exception:
+                continue
+        return await cv_filename_visible(page)
     # File input with an actual selected file.
     for frame in await page_contexts(page):
         try:
@@ -4866,9 +4884,10 @@ async def upload_cv_adaptive(page):
     if await direct_file_upload(page):
         return True, "direct_file_input"
 
-    ok, source = await select_saved_cv_control(page)
-    if ok:
-        return True, source
+    if ACTIVE_CV_GROUP != "support_qa":
+        ok, source = await select_saved_cv_control(page)
+        if ok:
+            return True, source
 
     ok, source = await discover_cv_controls(page)
     if ok:
@@ -7204,8 +7223,10 @@ async def prepare_application(job):
     # All supported form upload paths use CV_PATH. Select before launching the
     # browser so every ATS handler receives the exact same PDF for this job.
     from resume_routes import choose_resume
-    global CV_PATH
-    group, CV_PATH = choose_resume(job, CV_PATH_DATA, CV_PATH_SUPPORT_QA)
+    global CV_PATH, ACTIVE_CV_GROUP
+    group, selected_path = choose_resume(job, CV_PATH_DATA, CV_PATH_SUPPORT_QA)
+    ACTIVE_CV_GROUP = group
+    CV_PATH = selected_path
     print(f"📄 CV for {group}: {Path(CV_PATH).name}")
     async with async_playwright() as p:
         profile_dir = resolve_browser_profile_dir()
