@@ -1461,6 +1461,30 @@ class JobAgentWindow(QMainWindow):
         applications_layout.setContentsMargins(0, 0, 0, 0)
         self.applications_count = QLabel("0")
         applications_layout.addWidget(self.applications_count)
+        self.response_metrics = QLabel("Отправлено: 0 · Ответы: 0 · На этапе интервью: 0 · Отказы: 0 · Офферы: 0")
+        self.response_metrics.setObjectName("Muted")
+        self.response_metrics.setTextFormat(Qt.PlainText)
+        self.response_metrics.setWordWrap(True)
+        applications_layout.addWidget(self.response_metrics)
+        self.followups_title = QLabel("Следующие действия (локальные напоминания)")
+        self.followups_title.setObjectName("Muted")
+        applications_layout.addWidget(self.followups_title)
+        self.followups_summary = QLabel("Нет запланированных действий")
+        self.followups_summary.setObjectName("Muted")
+        self.followups_summary.setTextFormat(Qt.PlainText)
+        applications_layout.addWidget(self.followups_summary)
+        self.followups_table = self._new_table(["Когда", "Вакансия и компания", "Этап", "Срок"])
+        self.followups_table.setObjectName("FollowupsTable")
+        self.followups_table.setMaximumHeight(200)
+        self.followups_table.setMinimumHeight(96)
+        self.followups_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.followups_table.verticalHeader().setDefaultSectionSize(50)
+        self.followups_table.doubleClicked.connect(lambda _: self._open_followup_in_dashboard())
+        applications_layout.addWidget(self.followups_table)
+        self.open_followup_btn = QPushButton("Открыть выбранное действие в Dashboard")
+        self.open_followup_btn.setObjectName("Outline")
+        self.open_followup_btn.clicked.connect(self._open_followup_in_dashboard)
+        applications_layout.addWidget(self.open_followup_btn)
         self.applications_table = self._new_table(["Оценка", "Вакансия", "Компания", "Решение", "Результат"])
         self.applications_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.applications_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
@@ -2007,7 +2031,69 @@ class JobAgentWindow(QMainWindow):
                 item.setToolTip(value)
                 self.applications_table.setItem(row, col, item)
         self.applications_count.setText(f"Попыток отклика в истории: {len(application_records)}")
+        self._refresh_followups(submitted_ids, responses)
         self._dashboard_selection_changed()
+
+    def _refresh_followups(self, submitted_ids, responses):
+        stats, followups = application_followup_overview(
+            self.dashboard_all_records, submitted_ids, responses,
+        )
+        self.response_metrics.setText(
+            f"Отправлено: {stats['sent']} · Ответы: {stats['replies']}"
+            f" · На этапе интервью: {stats['interviews']}"
+            f" · Отказы: {stats['rejected']} · Офферы: {stats['offers']}"
+        )
+        self.followups_summary.setText(
+            f"Требуют внимания: {stats['due']}"
+            f" · В следующие 7 дней: {stats['next_week']}"
+            " · Напоминания видны только в приложении"
+        )
+        selected = self.followups_table.currentItem()
+        selected_id = selected.data(Qt.UserRole) if selected else ""
+        self.followups_table.setRowCount(len(followups))
+        self.open_followup_btn.setEnabled(bool(followups))
+        for row, reminder in enumerate(followups):
+            label = {
+                "due": "Срок наступил",
+                "next_week": "В течение недели",
+                "later": "Позже",
+            }[reminder["bucket"]]
+            values = [
+                reminder["next_date"],
+                reminder["title"] + "\n" + reminder["company"],
+                RESPONSE_STAGES.get(reminder["stage"], reminder["stage"]),
+                label,
+            ]
+            for col, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setData(Qt.UserRole, reminder["job_id"])
+                item.setToolTip(value)
+                if reminder["bucket"] == "due" and col == 3:
+                    item.setForeground(QColor("#b04b16"))
+                self.followups_table.setItem(row, col, item)
+            if reminder["job_id"] == selected_id:
+                self.followups_table.selectRow(row)
+        if followups and self.followups_table.currentRow() < 0:
+            self.followups_table.selectRow(0)
+
+    def _open_followup_in_dashboard(self):
+        item = self.followups_table.currentItem()
+        if not item:
+            return
+        jid = item.data(Qt.UserRole)
+        if not jid:
+            return
+        self._show_all_vacancies()
+        for index, record in enumerate(self.dashboard_records):
+            if canonical_local_job_id(
+                record.get("job_id", ""), record.get("url", "")
+            ) == jid:
+                self.dashboard_table.selectRow(index)
+                return
+        QMessageBox.information(
+            self, "Следующее действие",
+            "Вакансия отсутствует в Dashboard, но сохранена в истории откликов.",
+        )
 
     def _open_selected_job(self):
         record = self._selected_dashboard_record()
