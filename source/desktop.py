@@ -1994,6 +1994,157 @@ class JobAgentWindow(QMainWindow):
         self._update_run_mode()
         self._refresh_dashboard()
 
+    def _browse_gmail_oauth(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Google OAuth Desktop JSON", str(Path.home()),
+            "JSON files (*.json);;All files (*)",
+        )
+        if path:
+            self.gmail_oauth_edit.setText(path)
+
+    def _connect_gmail(self):
+        if sys.platform != "darwin":
+            QMessageBox.warning(self, "Gmail", "Сейчас поддерживается macOS Keychain.")
+            return
+        try:
+            path = gmail_responses.validate_client_file(
+                self.gmail_oauth_edit.text().strip()
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "Gmail", str(exc))
+            return
+        self._start_gmail_worker("connect", path=path)
+
+    def _scan_gmail(self):
+        if not gmail_responses.is_connected():
+            QMessageBox.information(
+                self, "Gmail",
+                "Подключение Gmail не включено. Откройте Настройки → Gmail.",
+            )
+            return
+        self._start_gmail_worker("scan")
+
+    def _start_gmail_worker(self, mode, path=""):
+        if self._gmail_worker is not None and self._gmail_worker.isRunning():
+            return
+        worker = GmailWorker(
+            mode, path, self.dashboard_all_records,
+            self._current_submitted_ids, parent=self,
+        )
+        self._gmail_worker = worker
+        self.gmail_connect_btn.setEnabled(False)
+        self.gmail_scan_btn.setEnabled(False)
+        self.gmail_disconnect_btn.setEnabled(False)
+        text = "Ожидается подтверждение в браузере…" if mode == "connect" else "Поиск совпадений Gmail…"
+        self.gmail_connection_label.setText(text)
+        self.gmail_status_label.setText(text)
+        worker.succeeded.connect(lambda data: self._gmail_success(mode, data))
+        worker.failed.connect(lambda name: self._gmail_failure(mode, name))
+        worker.finished.connect(lambda: self._gmail_finished(worker))
+        worker.start()
+
+    def _gmail_finished(self, worker):
+        if self._gmail_worker is worker:
+            self._gmail_worker = None
+        self.gmail_connect_btn.setEnabled(True)
+        self.gmail_scan_btn.setEnabled(True)
+        self.gmail_disconnect_btn.setEnabled(True)
+        worker.deleteLater()
+
+    def _gmail_success(self, mode, data):
+        if mode == "connect":
+            # Save the OAuth file path only; tokens stay in macOS Keychain.
+            self.settings = self._collect_settings()
+            save_settings(self.settings)
+            self.gmail_connection_label.setText("Gmail подключён (только чтение).")
+            self.gmail_status_label.setText("Gmail: подключён. Проверка по кнопке.")
+            QMessageBox.information(
+                self, "Gmail",
+                "Аккаунт подключён. Для поиска ответов перейдите во вкладку "
+                "«Отклики» и нажмите «Проверить ответы в Gmail».",
+            )
+        else:
+            self.gmail_connection_label.setText("Последняя проверка завершена.")
+            self.gmail_status_label.setText(
+                f"Gmail: найдено возможных ответов — {len(data)}"
+            )
+            self._show_gmail_candidates(data)
+
+    def _gmail_failure(self, mode, exception_name):
+        self.gmail_connection_label.setText("Операция Gmail не выполнена.")
+        self.gmail_status_label.setText("Gmail: проверка не завершена")
+        QMessageBox.warning(
+            self, "Gmail",
+            "Не удалось подключиться к Gmail или получить письма "
+            f"({exception_name}). Проверьте OAuth, доступ в интернет "
+            "и разрешения аккаунта. Отклики не изменились.",
+        )
+
+    def _disconnect_gmail(self):
+        if self._gmail_worker is not None and self._gmail_worker.isRunning():
+            return
+        gmail_responses.disconnect()
+        self.gmail_connection_label.setText("Gmail отключён. Локальные токены удалены из Keychain.")
+        self.gmail_status_label.setText("Gmail: отключён")
+
+    def _show_gmail_candidates(self, rows):
+        if not rows:
+            QMessageBox.information(
+                self, "Gmail",
+                "Среди последних 40 входящих писем за 90 дней не удалось "
+                "однозначно сопоставить ответы с отправленными откликами. "
+                "Это не означает, что ответов нет. Статусы не менялись.",
+            )
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Gmail · Возможные ответы работодателей")
+        dialog.resize(860, 460)
+        layout = QVBoxLayout(dialog)
+        intro = QLabel(
+            "Это только предположения на основе отправленных заявок, "
+            "заголовков писем и коротких фрагментов. "
+            "После проверки письма отметьте этап отклика вручную."
+        )
+        intro.setTextFormat(Qt.PlainText)
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        table = self._new_table(["Тема письма", "Отправитель", "Вакансия", "Совпадение"])
+        table.setRowCount(len(rows))
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        for row_id, result in enumerate(rows):
+            for col, value in enumerate((
+                result["subject"], result["sender"], result["job_id"],
+                result["reason"],
+            )):
+                item = QTableWidgetItem(str(value))
+                item.setToolTip(str(value))
+                item.setData(Qt.UserRole, result["thread_id"])
+                table.setItem(row_id, col, item)
+        layout.addWidget(table)
+        controls = QHBoxLayout()
+        open_email = QPushButton("Открыть письмо в Gmail")
+        def open_selected():
+            idx = table.currentRow()
+            if idx < 0:
+                return
+            thread_id = str(rows[idx]["thread_id"])
+            # The thread identifier comes from the Gmail API; accept hex only.
+            if thread_id and all(x in "0123456789abcdefABCDEF" for x in thread_id):
+                QDesktopServices.openUrl(
+                    QUrl("https://mail.google.com/mail/u/0/#all/" + thread_id)
+                )
+        open_email.clicked.connect(open_selected)
+        controls.addWidget(open_email)
+        controls.addStretch()
+        close = QPushButton("Закрыть")
+        close.clicked.connect(dialog.accept)
+        controls.addWidget(close)
+        layout.addLayout(controls)
+        if rows:
+            table.selectRow(0)
+        dialog.exec()
+
     def _update_run_mode(self):
         self.start_btn.setText("Начать поиск" if self.search_only_check.isChecked() else "Найти и подготовить")
         area = "Прага и рядом" if self.prague_check.isChecked() else "Любое расположение"
@@ -3242,6 +3393,12 @@ class JobAgentWindow(QMainWindow):
             self.run_time_value.setText("—")
 
     def closeEvent(self, event):
+        if self._gmail_worker is not None and self._gmail_worker.isRunning():
+            QMessageBox.information(
+                self, "Gmail", "Завершите проверку Gmail или вход через Google перед закрытием.",
+            )
+            event.ignore()
+            return
         if self.agent_process and self.agent_process.is_alive():
             reply = QMessageBox.question(
                 self,
