@@ -2456,6 +2456,51 @@ def job_search_track(job):
     return "data" if role_class(title) in {"target", "expanded", "adjacent"} else "other"
 
 
+def discovery_filter_breakdown(jobs, processed, inactive_ids, pending_handoffs):
+    """Explain why discovered listings do not enter the enrichment pool.
+
+    This is read-only aggregate telemetry: never print job IDs, local paths,
+    usernames, emails or personal application details. A discovered listing is
+    counted once with mutually exclusive exclusion reasons, regardless of the
+    number of stored history rows for its canonical job ID.
+    """
+    categories = ("data", "support", "qa", "other")
+    reasons = ("submitted", "pending_handoff", "inactive", "excluded_title", "eligible")
+    counts = {
+        category: {reason: 0 for reason in reasons}
+        for category in categories
+    }
+    for job in jobs:
+        track = job_search_track(job)
+        key = canonical_history_key(job)
+        if key in processed:
+            reason = "submitted"
+        elif key in pending_handoffs:
+            reason = "pending_handoff"
+        elif key in inactive_ids:
+            reason = "inactive"
+        elif pre_enrichment_relevance_tier(job) == 0:
+            reason = "excluded_title"
+        else:
+            reason = "eligible"
+        counts[track][reason] += 1
+    return counts
+
+
+def print_discovery_filter_breakdown(jobs, processed, inactive_ids, pending_handoffs):
+    counts = discovery_filter_breakdown(jobs, processed, inactive_ids, pending_handoffs)
+    print("🧮 Discovery exclusion breakdown (listing counts, not unique jobs):")
+    for track in ("data", "support", "qa", "other"):
+        n = counts[track]
+        print(
+            f"   {track}: submitted={n['submitted']} | "
+            f"manual_handoff={n['pending_handoff']} | "
+            f"inactive={n['inactive']} | excluded_title={n['excluded_title']} | "
+            f"eligible_for_enrichment={n['eligible']}"
+        )
+    return counts
+
+
 def search_track_counts(jobs, decisions=None):
     """Read-only diagnostic breakdown; never logs candidate emails or CV paths."""
     result = {"data": 0, "support": 0, "qa": 0, "other": 0}
@@ -8012,6 +8057,9 @@ async def main():
         key for key, value in job_overrides.items()
         if str(value.get("decision", "")).upper() == "INACTIVE"
     }
+    filter_counts = print_discovery_filter_breakdown(
+        jobs, processed, inactive_ids, pending_handoffs
+    )
     fresh = select_discovery_candidates(
         jobs, processed, inactive_ids | pending_handoffs, MAX_JOBS_TO_REVIEW * 3,
     )
@@ -8020,6 +8068,14 @@ async def main():
         f"selected from {len(jobs)} discovered"
     )
     show_track_counts("Selected for enrichment", fresh)
+    selected_counts = search_track_counts(fresh)
+    for track in ("data", "support", "qa", "other"):
+        eligible = filter_counts[track]["eligible"]
+        limited = max(0, eligible - selected_counts[track])
+        print(
+            f"   {track} detail requests: {selected_counts[track]}/{eligible} eligible "
+            f"| left_unenriched={limited}"
+        )
 
     enriched = []
     for job in fresh:
