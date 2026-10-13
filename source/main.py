@@ -162,6 +162,8 @@ PRACE_SEARCH_ROUTES = [
     ("Business analytik", "/nabidky/business-analytik/"),
     ("IT analytik Praha", "/nabidky/praha/it-analytik/"),
     ("Data scientist / reporting", "/nabidky/data-scientist/"),
+    # Public Prace.cz category confirmed to list analyst, student, BI jobs.
+    ("Business Intelligence Specialist", "/nabidky/business-intelligence-specialist/"),
 ]
 
 
@@ -200,6 +202,16 @@ SEARCH_QUERIES = [
     "CRM Data Analyst",
     "Data Operations Analyst",
     "Junior Reporting Specialist",
+
+    # Czech-language titles that are not reliably returned by English queries.
+    # Full-description scoring and Prague/experience guards are unchanged.
+    "Datový analytik junior",
+    "Datový specialista",
+    "BI specialista",
+    "Specialista reportingu",
+    "Analytik dat",
+    "Datová kvalita",
+    "Junior analytik",
 ]
 
 SUPPORT_QA_SEARCH_QUERIES = [
@@ -2286,6 +2298,34 @@ async def browser_discovery_fallback(
     return recovered[:MAX_DISCOVERY_PER_SOURCE]
 
 
+def select_source_discovery_pool(jobs, source, submitted=None):
+    """Prefer never-submitted results within a source's fixed discovery cap.
+
+    Discovery can find more than 80 unique listings, but the former global
+    relevance sort could fill the cap with applications already confirmed
+    in local history. Selecting fresh candidates first is not a second job
+    application: later enrichment, scoring and submission guards are unchanged.
+
+    Preserve existing priority ordering within fresh/old groups. Apply track
+    balancing to fresh listings to keep Data, Support and QA represented.
+    Never persist or expose any personal history identifiers.
+    """
+    submitted = load_processed() if submitted is None else submitted
+    ranked = sorted(jobs, key=discovery_priority, reverse=True)
+    fresh = [job for job in ranked if canonical_history_key(job) not in submitted]
+    old = [job for job in ranked if canonical_history_key(job) in submitted]
+    selected = balanced_discovery_slots(fresh, MAX_DISCOVERY_PER_SOURCE)
+    if len(selected) < MAX_DISCOVERY_PER_SOURCE:
+        selected.extend(old[:MAX_DISCOVERY_PER_SOURCE - len(selected)])
+    print(
+        f"🆕 {source} source-cap selection: "
+        f"new_in_pool={len(fresh)} | submitted_in_pool={len(old)} | "
+        f"new_selected={sum(canonical_history_key(j) not in submitted for j in selected)} "
+        f"| selected_total={len(selected)}"
+    )
+    return selected
+
+
 def discover_jobs_cz(session):
     if not SOURCE_JOBS_CZ:
         return []
@@ -2315,8 +2355,7 @@ def discover_jobs_cz(session):
             discovery_failure("jobs.cz", f"{query}: {type(exc).__name__}")
             print(f"⚠️ Jobs.cz search failed for '{query}': {exc}")
 
-    jobs.sort(key=discovery_priority, reverse=True)
-    return jobs[:MAX_DISCOVERY_PER_SOURCE]
+    return select_source_discovery_pool(jobs, "Jobs.cz")
 
 
 def discover_prace_cz(session):
@@ -2350,9 +2389,8 @@ def discover_prace_cz(session):
             discovery_failure("prace.cz", f"{query}: {type(exc).__name__}")
             print(f"⚠️ Prace.cz search failed for '{query}': {exc}")
 
-    # Important: truncate only AFTER relevance/junior prioritization.
-    jobs.sort(key=discovery_priority, reverse=True)
-    return jobs[:MAX_DISCOVERY_PER_SOURCE]
+    # Avoid filling the fixed 80-result cap with already-sent applications.
+    return select_source_discovery_pool(jobs, "Prace.cz")
 
 def interleave_sources(*groups):
     out = []
