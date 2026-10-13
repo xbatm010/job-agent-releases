@@ -143,7 +143,7 @@ class DesktopTests(unittest.TestCase):
             notify.assert_called_once()
 
     def test_osascript_uses_static_script_and_argv_never_interpolates_job_title(self):
-        message = 'Interview "x"\n do shell script "touch /tmp/unsafe"'
+        message = 'Interview "x"\n do shell script "touch /tmp/unsafe"\x00'
         with patch.object(desktop.sys, "platform", "darwin"), \
                 patch.object(desktop.subprocess, "Popen") as popen:
             self.assertTrue(desktop.post_macos_notification(message))
@@ -151,7 +151,7 @@ class DesktopTests(unittest.TestCase):
             self.assertEqual(argv[0], "/usr/bin/osascript")
             self.assertEqual(argv[1], "-e")
             self.assertNotIn(message, argv[2])
-            self.assertEqual(argv[-1], message)
+            self.assertEqual(argv[-1], 'Interview "x" do shell script "touch /tmp/unsafe"')
             self.assertEqual(popen.call_args.kwargs["stdin"], desktop.subprocess.DEVNULL)
         with patch.object(desktop.sys, "platform", "linux"), \
                 patch.object(desktop.subprocess, "Popen") as popen:
