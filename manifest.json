@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "3.0.6",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.6/job-agent-3.0.6-macos.zip",
-      "sha256": "e54c830e181fe018581a70b4136d815769b932b5191e157f017d38fb6c5b7a68",
-      "notes": "Job Agent 3.0.6 beta improves visibility into search-only outcomes without relaxing recruitment qualification rules. After the user's 3.0.5 run (180 discovered; 108 enriched; 106 scored; 36 kept; 0 ready) and observed processed history increase from 42 to 45, this release prints category diagnostics for Data/BI, IT Support, QA and Other at discovery, enrichment selection, full scoring, APPLY/REVIEW eligible pool, final shortlist and ready-to-prepare list. This allows us to distinguish low supply and prior submissions from scoring over-filtering without inventing candidate experience. When there are no APPLY matches, safe manual-review suggestions diversify across Data/BI, QA, IT Support when available, while retaining hard-experience, evidence, Prague location, and supported-source guards. No changes to scoring thresholds, role-based CV choice, Gmail permissions, history, automatic submission protections or final manual Submit. Offline regression suite: 132 tests passing; run the app in SEARCH_ONLY to examine the new stage counts.",
+      "version": "3.0.7",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.7/job-agent-3.0.7-macos.zip",
+      "sha256": "8ddbf30fd64469df3ee53004e50ecabffef5372ae99284f27eef63944298ab7f",
+      "notes": "Job Agent 3.0.7 beta corrects a proven early-selection imbalance in v3.0.6 (53 Data/BI discovered, only 22 selected for detail enrichment, while 37/38 Support reached enrichment; none of twelve weak-evidence browser recoveries targeted Data/BI). Reallocate the existing finite detail-enrichment budget by track: half Data/BI, one third IT Support, remainder QA, backfilling unavailable track slots globally by relevance; preserve per-tier and cross-source ordering and keep exclusions for senior, processed and inactive jobs. Apply the same balanced strategy to the existing twelve read-only browser-evidence slots (target six Data/BI, four Support, two QA when eligible weak pages exist). New browser evidence track-count diagnostic. No increase to HTTP/browser request caps, no new external sources, no altered fit thresholds, no relaxation of manual final Submit, dedup, Gmail privacy or role-to-CV routing. Regression CI passed 137 tests; verify actual search-only category distribution on Mac after upgrade.",
       "min_version": "2.3.1"
     }
   }

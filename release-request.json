@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 54,
   "version": "3.0.7",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.7 beta corrects a proven early-selection imbalance in v3.0.6 (53 Data/BI discovered, only 22 selected for detail enrichment, while 37/38 Support reached enrichment; none of twelve weak-evidence browser recoveries targeted Data/BI). Reallocate the existing finite detail-enrichment budget by track: half Data/BI, one third IT Support, remainder QA, backfilling unavailable track slots globally by relevance; preserve per-tier and cross-source ordering and keep exclusions for senior, processed and inactive jobs. Apply the same balanced strategy to the existing twelve read-only browser-evidence slots (target six Data/BI, four Support, two QA when eligible weak pages exist). New browser evidence track-count diagnostic. No increase to HTTP/browser request caps, no new external sources, no altered fit thresholds, no relaxation of manual final Submit, dedup, Gmail privacy or role-to-CV routing. Regression CI passed 137 tests; verify actual search-only category distribution on Mac after upgrade.",
-  "last_published": "3.0.6",
-  "last_sha256": "e54c830e181fe018581a70b4136d815769b932b5191e157f017d38fb6c5b7a68"
+  "last_published": "3.0.7",
+  "last_sha256": "8ddbf30fd64469df3ee53004e50ecabffef5372ae99284f27eef63944298ab7f"
 }
