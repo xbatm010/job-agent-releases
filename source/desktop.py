@@ -2818,6 +2818,14 @@ class JobAgentWindow(QMainWindow):
             QMessageBox.warning(self, "Job Agent", error)
             return
 
+        try:
+            cv_group, selected_cv = choose_resume(
+                record, settings["cv_path"], settings.get("cv_support_qa_path", "")
+            )
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Job Agent · CV", str(exc))
+            return
+
         if not playwright_browser_present():
             QMessageBox.warning(
                 self,
@@ -2831,6 +2839,8 @@ class JobAgentWindow(QMainWindow):
             self,
             "Prepare now",
             "Prepare only this vacancy now?\n\n"
+            f"Selected CV ({'IT Support / QA' if cv_group == 'support_qa' else 'Data / BI'}): "
+            f"{Path(selected_cv).name}\n\n"
             "The agent will re-check score, strong evidence, location and "
             "experience blockers, then fill supported fields and stop before "
             "the employer's final Submit button.",
