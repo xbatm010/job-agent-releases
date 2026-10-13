@@ -121,6 +121,30 @@ class DesktopTests(unittest.TestCase):
             )
         self.assertFalse(desktop.RESPONSE_FILE.exists())
 
+    def test_secondary_cv_setting_is_independent_of_primary(self):
+        self.assertEqual(self.window.support_cv_edit.text(), "")
+        self.assertEqual(self.window._collect_settings()["cv_support_qa_path"], "")
+        primary = Path(self.temp.name) / "data.pdf"
+        secondary = Path(self.temp.name) / "support.pdf"
+        primary.write_bytes(b"primary pdf test")
+        secondary.write_bytes(b"support pdf test")
+        self.window.cv_edit.setText(str(primary))
+        self.window.support_cv_edit.setText(str(secondary))
+        settings = self.window._collect_settings()
+        self.assertEqual(settings["cv_path"], str(primary))
+        self.assertEqual(settings["cv_support_qa_path"], str(secondary))
+        env = desktop.child_env(settings)
+        self.assertEqual(env["CV_PATH"], str(primary))
+        self.assertEqual(env["CV_PATH_SUPPORT_QA"], str(secondary))
+
+    def test_invalid_secondary_cv_is_blocked_when_preparing(self):
+        primary = Path(self.temp.name) / "data.pdf"
+        primary.write_bytes(b"test")
+        self.window.cv_edit.setText(str(primary))
+        self.window.support_cv_edit.setText(str(primary) + ".invalid")
+        settings = self.window._collect_settings()
+        self.assertIn("IT Support / QA", self.window._validate_settings(settings, require_application=True))
+
     def test_macos_notifications_default_off_and_settings_round_trip(self):
         self.assertFalse(self.window.macos_notification_check.isChecked())
         self.assertFalse(self.window._collect_settings()["macos_notifications"])
