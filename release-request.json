@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 51,
   "version": "3.0.4",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.4 beta expands entry-level discovery to IT Support, Helpdesk, Service Desk, Application Support, Junior QA and Manual Tester while preserving existing Data/BI search. Settings > Search now offers an enabled-by-default Support/QA toggle, with discovery queries on Jobs.cz and the public Prace.cz Tester category. Support/QA titles use a separate conservative fit model centered on troubleshooting, support tickets, documentation, manual/regression testing and defect analysis rather than mandatory SQL/Power BI. Automatic preparation requires an explicit junior/trainee/L1 vacancy title, strong role description evidence, at least two relevant/familiar indicators, no hard 3+ years experience blocker, and no selected advanced mandatory technical requirements; other matching jobs remain for manual review. CV selection from 3.0.3 continues to choose the secondary Support/QA PDF for these roles, including L1 Support. No applicant expertise or certificates are invented; manual final Submit remains mandatory, confirmed submissions remain protected, and StartupJobs stays discovery-only. Offline regression CI passed 124 tests; macOS packaging and real discovery on user machine must still be verified.",
-  "last_published": "3.0.3",
-  "last_sha256": "662d28ce4d65f7fe67d1167b4b1550b2343899b078dc028eb2ca5bc916701db9"
+  "last_published": "3.0.4",
+  "last_sha256": "1af80cf61d81b076d030f0e9554866fa62276dca03f1aca971054bc7ea701036"
 }

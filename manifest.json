@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "3.0.3",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.3/job-agent-3.0.3-macos.zip",
-      "sha256": "662d28ce4d65f7fe67d1167b4b1550b2343899b078dc028eb2ca5bc916701db9",
-      "notes": "Job Agent 3.0.3 beta adds two independent local PDF resume selectors under Settings > Files: primary CV for Data/BI/Reporting and secondary CV for IT Support/QA/Tester. During each user-authorized application preparation, the agent matches the vacancy's actual title conservatively (including Czech variants) and selects the appropriate file before the browser form or file picker opens. Prepare Now displays the chosen CV basename for confirmation. A support/QA title cannot fall back silently to a Data/BI PDF if the secondary file is absent. On Jobs.cz, support/QA flows no longer accept a generic previously saved profile CV without evidence of the selected filename. Existing Data/BI CV behavior and final human-only Submit safeguards are unchanged. The release preserves the new resume_routes.py in sanitized source. The existing discovery and ranking are still Data/BI-focused; broader IT Support/QA search will be developed separately. Offline regression suite: 113/113 passing; macOS packaging and user acceptance remain to be verified.",
+      "version": "3.0.4",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.4/job-agent-3.0.4-macos.zip",
+      "sha256": "1af80cf61d81b076d030f0e9554866fa62276dca03f1aca971054bc7ea701036",
+      "notes": "Job Agent 3.0.4 beta expands entry-level discovery to IT Support, Helpdesk, Service Desk, Application Support, Junior QA and Manual Tester while preserving existing Data/BI search. Settings > Search now offers an enabled-by-default Support/QA toggle, with discovery queries on Jobs.cz and the public Prace.cz Tester category. Support/QA titles use a separate conservative fit model centered on troubleshooting, support tickets, documentation, manual/regression testing and defect analysis rather than mandatory SQL/Power BI. Automatic preparation requires an explicit junior/trainee/L1 vacancy title, strong role description evidence, at least two relevant/familiar indicators, no hard 3+ years experience blocker, and no selected advanced mandatory technical requirements; other matching jobs remain for manual review. CV selection from 3.0.3 continues to choose the secondary Support/QA PDF for these roles, including L1 Support. No applicant expertise or certificates are invented; manual final Submit remains mandatory, confirmed submissions remain protected, and StartupJobs stays discovery-only. Offline regression CI passed 124 tests; macOS packaging and real discovery on user machine must still be verified.",
       "min_version": "2.3.1"
     }
   }
