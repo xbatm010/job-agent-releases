@@ -545,6 +545,11 @@ jobs:
             --hidden-import updater \
             --hidden-import desktop_theme \
             --hidden-import desktop_widgets \
+            --hidden-import gmail_responses \
+            --collect-submodules keyring \
+            --collect-submodules googleapiclient \
+            --collect-submodules google_auth_oauthlib \
+            --copy-metadata keyring \
             --hidden-import playwright \
             --hidden-import playwright.async_api \
             --hidden-import playwright.sync_api \
