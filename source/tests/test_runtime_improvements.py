@@ -186,6 +186,86 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(jobs[0]["company"], "Skupina ČEZ")
         self.assertEqual(jobs[0]["company_source"], "search_card")
 
+    async def test_navigation_domů_is_not_an_employer_but_real_brands_survive(self):
+        for label in [
+            "Domů", "Domu", "Home", "Úvod", "Hlavní stránka",
+            "Zpět", "Menu", "Přihlásit se", "Volné pozice",
+        ]:
+            with self.subTest(label=label):
+                self.assertFalse(main.valid_company(label, "search_card"))
+                self.assertFalse(main.valid_company(label, "meta"))
+                self.assertEqual(main.normalized_employer_logo_label(label), "")
+        for label in ["Home Credit a.s.", "Skupina ČEZ", "Seznam.cz, a.s."]:
+            with self.subTest(company=label):
+                self.assertTrue(main.valid_company(label, "search_card"))
+                self.assertEqual(main.normalized_employer_logo_label(label), label)
+
+    async def test_navigation_logo_skipped_even_when_named_company(self):
+        soup = main.BeautifulSoup("""
+        <article>
+          <h2><a href="/rpd/2001457607/">Master Data Specialist</a></h2>
+          <header><a class="company-logo" href="/">
+            <img src="/assets/company-logo.svg" alt="Domů"></a></header>
+          <nav><img src="/logos/header.svg" alt="Navigation"></nav>
+          <div class="company-logo">
+            <img src="/assets/cez-logo.svg" alt="Skupina ČEZ"></div>
+        </article>
+        """, "html.parser")
+        self.assertEqual(
+            main.extract_company_from_search_card(
+                soup.article, "Master Data Specialist",
+            ),
+            "Skupina ČEZ",
+        )
+        only_nav = main.BeautifulSoup("""
+        <article>
+          <h2><a href="/rpd/2001457607/">Master Data Specialist</a></h2>
+          <div class="company-logo">
+            <img src="/assets/site-logo.svg" alt="Domů"></div>
+        </article>
+        """, "html.parser")
+        self.assertEqual(main.extract_company_from_search_card(
+            only_nav.article, "Master Data Specialist",
+        ), "")
+        detail = main.BeautifulSoup(
+            '<div class="company-logo"><img src="/site/logo.svg" alt="Domů"></div>',
+            "html.parser",
+        )
+        self.assertEqual(main.extract_company(detail), "")
+
+    async def test_browser_navigation_logo_cannot_be_employer(self):
+        class Locator:
+            first = None
+
+            def __init__(self, selector):
+                self.selector = selector
+                self.first = self
+
+            async def count(self):
+                return 1 if "img[alt]," in self.selector else 0
+
+            def nth(self, index):
+                return self
+
+            async def is_visible(self):
+                return True
+
+            async def get_attribute(self, name):
+                return "Domů" if name == "alt" else None
+
+            async def inner_text(self):
+                return ""
+
+        page = SimpleNamespace(
+            url="https://www.jobs.cz/rpd/2001457607/",
+            evaluate=AsyncMock(return_value=""),
+            locator=lambda selector: Locator(selector),
+            title=AsyncMock(return_value=""),
+        )
+        with patch.object(main, "page_contexts", AsyncMock(return_value=[page])):
+            company, source = await main.extract_company_from_page(page)
+        self.assertEqual((company, source), ("", "not_detected"))
+
     async def test_employer_logo_rejects_unrelated_images_and_vacancy_title(self):
         bs = main.BeautifulSoup
         title = "Specialista/ka datové kvality (Data Quality)"
