@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 48,
   "version": "3.0.2",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.2 beta improves the user-tested Gmail readonly reply review. Candidate messages now show full vacancy title and employer instead of technical job IDs, with a cleaner three-column layout, plain-text snippet preview and conservative advisory categories distinguishing automatic receipt acknowledgments from possible interviews, possible rejections and other selection results. Generic selection-result subjects are never treated as confirmed rejections. New Отметить этап вручную action opens the existing explicit human-approved response editor only for verified submitted jobs; no automatic recruiter stage changes or Gmail writes. The Gmail API remains limited to user-initiated readonly scans of metadata and snippets; no automatic sending, CV upload or background polling. Release tooling now preserves source/gmail_responses.py and source/GMAIL_SETUP.md and fails if imported Gmail modules would be lost from persisted sanitized source. Regression suite: 101/101 passing on GitHub Actions; native macOS build and real user acceptance still need separate verification.",
-  "last_published": "3.0.1",
-  "last_sha256": "eb0136f655b878585cda89fa368ca3a799d0d7c03bc2248c482d9e4d03ef86b1"
+  "last_published": "3.0.2",
+  "last_sha256": "b8296a8570addf4c8eac71e16024568423462f00b46c99341186e1470ad9e35d"
 }
