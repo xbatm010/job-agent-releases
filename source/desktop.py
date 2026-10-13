@@ -2083,8 +2083,19 @@ class JobAgentWindow(QMainWindow):
     def _disconnect_gmail(self):
         if self._gmail_worker is not None and self._gmail_worker.isRunning():
             return
-        gmail_responses.disconnect()
-        self.gmail_connection_label.setText("Gmail отключён. Локальные токены удалены из Keychain.")
+        try:
+            removed = gmail_responses.disconnect()
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "Gmail",
+                f"Не удалось удалить разрешение из Keychain ({type(exc).__name__}). "
+                "Проверьте разрешения macOS.",
+            )
+            return
+        self.gmail_connection_label.setText(
+            "Gmail отключён: локальные токены удалены из Keychain."
+            if removed else "Gmail: сохранённые токены отсутствуют."
+        )
         self.gmail_status_label.setText("Gmail: отключён")
 
     def _show_gmail_candidates(self, rows):
