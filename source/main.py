@@ -759,7 +759,7 @@ def discovery_priority(job):
         score += 15
 
     if re.search(
-        r"power\s*bi|reporting|business\s*intelligence|sql|
+        r"power\s*bi|reporting|business\s*intelligence|sql|"
         r"data\s+analytics|datov|data\s+quality|master\s+data|"
         r"data\s+governance|dashboard",
         text,
