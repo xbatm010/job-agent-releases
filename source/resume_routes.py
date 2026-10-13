@@ -21,6 +21,8 @@ SUPPORT_QA_PATTERNS = [
     r"\b(?:software|application)\s+tester\b",
     r"\btest\s+analyst\b",
     r"\bmanual\s+qa\b",
+    r"\b(?:junior\s+)?tester(?:ka)?\b",
+    r"\b(?:junior\s+)?test\s+(?:engineer|specialist)\b",
     # Czech; accents removed before matching.
     r"\bit\s+podpor[ay]\b",
     r"\btechnick[ay]\s+podpor[ay]\b",
