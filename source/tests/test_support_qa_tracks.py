@@ -395,6 +395,57 @@ class SupportQaTrackTests(unittest.TestCase):
         self.assertEqual(sum(x["pending_handoff"] for x in counts.values()), 0)
         self.assertEqual(sum(x["inactive"] for x in counts.values()), 0)
 
+    def test_source_cap_prioritizes_unsubmitted_vacancies(self):
+        # Earlier runs found 30 Data postings that had already been sent;
+        # do not let a source's fixed 80-result cap be consumed by history.
+        old = [
+            {"title": "Junior Data Analyst", "job_id": str(2000300000+i),
+             "source": "jobs.cz"} for i in range(12)
+        ]
+        new = [
+            {"title": "Data Analyst", "job_id": str(2000400000+i),
+             "source": "jobs.cz"} for i in range(4)
+        ] + [
+            {"title": "Junior QA Tester", "job_id": "2000400100",
+             "source": "jobs.cz"},
+            {"title": "IT Support", "job_id": "2000400101",
+             "source": "jobs.cz"},
+        ]
+        processed = {f"job:{j['job_id']}" for j in old}
+        from contextlib import redirect_stdout
+        from io import StringIO
+        with patch.object(main, "MAX_DISCOVERY_PER_SOURCE", 6), redirect_stdout(StringIO()) as out:
+            result = main.select_source_discovery_pool(old + new, "Jobs.cz", processed)
+        self.assertEqual(len(result), 6)
+        self.assertEqual(set(x["job_id"] for x in result), set(x["job_id"] for x in new))
+        self.assertIn("submitted_in_pool=12", out.getvalue())
+        self.assertIn("new_selected=6", out.getvalue())
+        self.assertNotIn(old[0]["job_id"], out.getvalue())
+
+    def test_source_cap_backfills_with_old_when_new_supply_short(self):
+        new = [
+            {"title": "Junior QA Tester", "job_id": "2000400201", "source": "prace.cz"},
+            {"title": "Junior Data Analyst", "job_id": "2000400202", "source": "prace.cz"},
+        ]
+        old = [
+            {"title": "Data Analyst", "job_id": str(2000400300+i),
+             "source": "prace.cz"} for i in range(4)
+        ]
+        processed = {f"job:{j['job_id']}" for j in old}
+        with patch.object(main, "MAX_DISCOVERY_PER_SOURCE", 4):
+            result = main.select_source_discovery_pool(old + new, "Prace.cz", processed)
+        self.assertEqual(len(result), 4)
+        self.assertEqual({x["job_id"] for x in result[:2]}, {x["job_id"] for x in new})
+        self.assertEqual(len({x["job_id"] for x in result}), 4)
+
+    def test_added_czech_data_search_terms_and_verified_prace_category(self):
+        self.assertIn("Datový analytik junior", main.SEARCH_QUERIES)
+        self.assertIn("BI specialista", main.SEARCH_QUERIES)
+        self.assertIn("Analytik dat", main.SEARCH_QUERIES)
+        self.assertTrue(any(route == "/nabidky/business-intelligence-specialist/"
+                            for _, route in main.PRACE_SEARCH_ROUTES))
+        self.assertEqual(len(main.SEARCH_QUERIES), len(set(main.SEARCH_QUERIES)))
+
     def test_search_prioritization_includes_qa_support(self):
         job = vacancy("Junior QA Tester", QA_DESCRIPTION)
         self.assertGreater(main.discovery_priority(job), main.discovery_priority(vacancy("Accountant", "Accounts payable.")))
