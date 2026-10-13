@@ -546,6 +546,7 @@ jobs:
             --hidden-import desktop_theme \
             --hidden-import desktop_widgets \
             --hidden-import gmail_responses \
+            --hidden-import support_qa_tracks \
             --collect-submodules keyring \
             --collect-submodules googleapiclient \
             --collect-submodules google_auth_oauthlib \
@@ -652,7 +653,7 @@ jobs:
 
           # Keep every reviewed Gmail module and setup guide when publishing.
           # Release source is a sanitized allowlist; update it for new modules.
-          for f in desktop.py desktop_theme.py desktop_widgets.py main.py updater.py gmail_responses.py resume_routes.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md GMAIL_SETUP.md update_manifest.example.json; do
+          for f in desktop.py desktop_theme.py desktop_widgets.py main.py updater.py gmail_responses.py resume_routes.py support_qa_tracks.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md GMAIL_SETUP.md update_manifest.example.json; do
             if [ -f "buildsrc/$f" ]; then
               cp "buildsrc/$f" "source/$f"
             fi
@@ -666,6 +667,9 @@ jobs:
           fi
           if grep -Eq '^from resume_routes import' buildsrc/desktop.py; then
             test -s source/resume_routes.py
+          fi
+          if grep -Eq '^from support_qa_tracks import' buildsrc/main.py; then
+            test -s source/support_qa_tracks.py
           fi
 
           if [ -d "buildsrc/tests" ]; then

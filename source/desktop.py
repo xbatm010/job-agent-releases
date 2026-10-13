@@ -217,6 +217,7 @@ DEFAULTS = {
     "prague_only": True,
     "cv_path": "",  # primary Data/BI/Reporting PDF (existing setting)
     "cv_support_qa_path": "",  # optional separate IT Support / QA PDF
+    "search_support_qa": True,  # additive discovery; Data/BI remains enabled
     "first_name": "",
     "last_name": "",
     "email": "",
@@ -977,6 +978,7 @@ def child_env(settings: dict) -> dict:
         "SOURCE_JOBS_CZ": str(settings["source_jobs"]).lower(),
         "SOURCE_PRACE_CZ": str(settings["source_prace"]).lower(),
         "SOURCE_STARTUPJOBS_CZ": str(settings["source_startupjobs"]).lower(),
+        "SEARCH_SUPPORT_QA": str(bool(settings.get("search_support_qa", True))).lower(),
         "MAX_APPLICATIONS_PER_RUN": str(settings["max_applications"]),
         "MIN_APPLY_SCORE": str(settings["min_apply"]),
         "VERIFIED_TARGET_APPLY_SCORE": str(settings["verified_apply"]),
@@ -1742,6 +1744,15 @@ class JobAgentWindow(QMainWindow):
         src_l.setColumnStretch(1, 1)
         search_layout.addRow("Источники", src_row)
 
+        self.support_qa_search_check = QCheckBox(
+            "IT Support · Helpdesk · Application Support · Junior QA / Tester"
+        )
+        self.support_qa_search_check.setToolTip(
+            "Include IT Support and QA with independent skill scoring. "
+            "Data/BI discovery stays enabled."
+        )
+        search_layout.addRow("Доп. направления", self.support_qa_search_check)
+
         discovery_note = QLabel(
             "StartupJobs.cz is discovery-only in this version: "
             "vacancies are scored and shown in Dashboard, but applications stay manual."
@@ -2272,7 +2283,11 @@ class JobAgentWindow(QMainWindow):
     def _update_run_mode(self):
         self.start_btn.setText("Начать поиск" if self.search_only_check.isChecked() else "Найти и подготовить")
         area = "Прага и рядом" if self.prague_check.isChecked() else "Любое расположение"
-        self.page_subtitle.setText(area + " · Data / BI / Reporting")
+        self.page_subtitle.setText(
+            area + (" · Data / BI + IT Support / QA"
+                    if self.support_qa_search_check.isChecked()
+                    else " · Data / BI / Reporting")
+        )
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -3047,6 +3062,7 @@ class JobAgentWindow(QMainWindow):
         self.search_only_check.setChecked(bool(s.get("search_only", True)))
         self.jobs_check.setChecked(bool(s["source_jobs"]))
         self.prace_check.setChecked(bool(s["source_prace"]))
+        self.support_qa_search_check.setChecked(bool(s.get("search_support_qa", True)))
         self.startupjobs_check.setChecked(bool(s.get("source_startupjobs", True)))
         self.prague_check.setChecked(bool(s["prague_only"]))
         self.browser_check.setChecked(bool(s["browser_evidence"]))
@@ -3100,6 +3116,7 @@ class JobAgentWindow(QMainWindow):
             "search_only": self.search_only_check.isChecked(),
             "source_jobs": self.jobs_check.isChecked(),
             "source_prace": self.prace_check.isChecked(),
+            "search_support_qa": self.support_qa_search_check.isChecked(),
             "source_startupjobs": self.startupjobs_check.isChecked(),
             "prague_only": self.prague_check.isChecked(),
             "browser_evidence": self.browser_check.isChecked(),
