@@ -477,7 +477,9 @@ jobs:
           assert "self.indeed_check" not in desktop_source
           assert 'QCheckBox("Indeed.cz")' not in desktop_source
           assert '"indeed.com" in url' in desktop_source
-          assert "three-source data-role discovery" in runtime_source
+          assert "Data/BI and IT Support/QA discovery" in runtime_source
+          assert "SEARCH_SUPPORT_QA" in runtime_source
+          assert Path("buildsrc/support_qa_tracks.py").exists()
           print("Retired Indeed cleanup + three-source discovery smoke test: OK")
 
           entry_job = {
