@@ -85,5 +85,39 @@ class ResumeRouteTests(unittest.TestCase):
         self.assertEqual(original, copy)
 
 
+class ResumeUploadSafetyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_secondary_cv_never_uses_unverified_saved_profile_cv(self):
+        from unittest.mock import AsyncMock, patch
+        import main
+        with tempfile.TemporaryDirectory() as tmp:
+            cv = Path(tmp) / "qa.pdf"
+            cv.write_bytes(b"%PDF-test")
+            with patch.object(main, "CV_PATH", str(cv)), \
+                    patch.object(main, "ACTIVE_CV_GROUP", "support_qa"), \
+                    patch.object(main, "direct_file_upload", new_callable=AsyncMock, return_value=False), \
+                    patch.object(main, "select_saved_cv_control", new_callable=AsyncMock, return_value=(True, "saved")) as saved, \
+                    patch.object(main, "discover_cv_controls", new_callable=AsyncMock, return_value=(False, "no_control")), \
+                    patch.object(main, "cv_attachment_detected", new_callable=AsyncMock, return_value=False), \
+                    patch.object(main, "manual_cv_fallback", new_callable=AsyncMock, return_value=(False, "manual_expired")):
+                ok, reason = await main.upload_cv_adaptive(object())
+                self.assertFalse(ok)
+                self.assertEqual(reason, "cv_attachment_not_detected")
+                saved.assert_not_awaited()
+
+    async def test_data_cv_retains_prior_saved_profile_behavior(self):
+        from unittest.mock import AsyncMock, patch
+        import main
+        with tempfile.TemporaryDirectory() as tmp:
+            cv = Path(tmp) / "data.pdf"
+            cv.write_bytes(b"%PDF-test")
+            with patch.object(main, "CV_PATH", str(cv)), \
+                    patch.object(main, "ACTIVE_CV_GROUP", "data"), \
+                    patch.object(main, "direct_file_upload", new_callable=AsyncMock, return_value=False), \
+                    patch.object(main, "select_saved_cv_control", new_callable=AsyncMock, return_value=(True, "saved")) as saved:
+                ok, reason = await main.upload_cv_adaptive(object())
+                self.assertTrue(ok)
+                self.assertEqual(reason, "saved")
+                saved.assert_awaited_once()
+
 if __name__ == "__main__":
     unittest.main()
