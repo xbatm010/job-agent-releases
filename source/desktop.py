@@ -709,6 +709,107 @@ def save_response_tracking(job_id, stage, notes="", next_date="") -> dict:
     return entry
 
 
+# Recruiter replies are not inferred from a technical Submit. These counts use
+# unique confirmed application IDs plus explicit user-entered response stages.
+EMPLOYER_REPLY_STAGES = {
+    "CONTACTED", "INTERVIEW_SCHEDULED", "INTERVIEW_COMPLETED",
+    "REJECTED", "OFFER",
+}
+FOLLOWUP_CLOSED_STAGES = {"REJECTED", "WITHDRAWN"}
+
+
+def followup_due_bucket(next_date, now=None):
+    """Return due / next_week / later / '', using local wall-clock time.
+
+    Date-only reminders are due for the entire named local day. Timed
+    reminders become due only once the specified local clock time passes.
+    Nothing is sent or scheduled in the operating system.
+    """
+    next_date = str(next_date or "").strip()
+    if not next_date or not valid_followup_date(next_date):
+        return ""
+    now = now or datetime.now()
+    if now.tzinfo is not None:
+        now = now.astimezone().replace(tzinfo=None)
+    if len(next_date) == 10:
+        due = datetime.strptime(next_date, "%Y-%m-%d").date()
+        if due <= now.date():
+            return "due"
+        if due <= (now + timedelta(days=7)).date():
+            return "next_week"
+        return "later"
+    due_at = datetime.strptime(next_date, "%Y-%m-%d %H:%M")
+    if due_at <= now:
+        return "due"
+    if due_at <= now + timedelta(days=7):
+        return "next_week"
+    return "later"
+
+
+def application_followup_overview(records, submitted_ids=None, responses=None, now=None):
+    """Snapshot of confirmed submissions and manual follow-up tasks.
+
+    Deduplicates canonical Jobs.cz/Prace.cz IDs and excludes response entries
+    without an application. Stale statuses never trigger repeat submission.
+    """
+    responses = responses if responses is not None else load_response_tracking()
+    submitted = set(submitted_ids or ())
+    rows = {}
+    for record in records:
+        jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+        if not jid:
+            continue
+        rows[jid] = record
+        if str(record.get("status", "")).upper() in TERMINAL_STATUSES:
+            submitted.add(jid)
+    stats = {
+        "sent": len(submitted),
+        "replies": 0,
+        "interviews": 0,
+        "rejected": 0,
+        "offers": 0,
+        "due": 0,
+        "next_week": 0,
+    }
+    followups = []
+    for jid in submitted:
+        response = responses.get(jid) or {}
+        stage = response.get("stage", "WAITING")
+        if stage not in RESPONSE_STAGES:
+            stage = "WAITING"
+        if stage in EMPLOYER_REPLY_STAGES:
+            stats["replies"] += 1
+        if stage in {"INTERVIEW_SCHEDULED", "INTERVIEW_COMPLETED"}:
+            stats["interviews"] += 1
+        if stage == "REJECTED":
+            stats["rejected"] += 1
+        if stage == "OFFER":
+            stats["offers"] += 1
+        next_date = str(response.get("next_date", "")).strip()
+        if stage in FOLLOWUP_CLOSED_STAGES:
+            continue
+        bucket = followup_due_bucket(next_date, now)
+        if not bucket:
+            continue
+        if bucket in {"due", "next_week"}:
+            stats[bucket] += 1
+        record = rows.get(jid, {})
+        followups.append({
+            "job_id": jid,
+            "title": str(record.get("title") or jid),
+            "company": str(record.get("company") or "Компания не определена"),
+            "stage": stage,
+            "next_date": next_date,
+            "bucket": bucket,
+            "notes": str(response.get("notes") or ""),
+        })
+    followups.sort(key=lambda item: (
+        0 if item["bucket"] == "due" else 1 if item["bucket"] == "next_week" else 2,
+        item["next_date"], item["title"].lower(),
+    ))
+    return stats, followups
+
+
 class QueueWriter(io.TextIOBase):
     def __init__(self, q):
         self.q = q
