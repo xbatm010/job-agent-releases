@@ -894,6 +894,21 @@ def valid_company(name, source="generic"):
     if normalize_key_text(name) in {normalize_key_text(x) for x in location_names}:
         return False
 
+    # Site navigation and control labels can leak into employer logo alt/text.
+    # Match the WHOLE label: legitimate brands such as "Home Credit" and
+    # "ČEZ Distribuce" must not be rejected because they contain a word.
+    navigation_labels = {
+        "Domů", "Domu", "Home", "Homepage", "Úvod", "Uvod",
+        "Hlavní stránka", "Hlavni stranka", "Na hlavní stránku",
+        "Na hlavni stranku", "Zpět", "Zpet", "Menu", "Navigace",
+        "Přihlásit se", "Prihlasit se", "Registrace", "Kariéra",
+        "Kariera", "Volné pozice", "Volne pozice",
+    }
+    if normalize_key_text(name) in {
+        normalize_key_text(label) for label in navigation_labels
+    }:
+        return False
+
     # SEO title fragments describing a role are not employer names.
     if normalize_key_text(name) in {
         "analytik", "analyticka", "analyst", "business analyst",
@@ -965,6 +980,10 @@ def employer_from_logo(container, title=""):
         return ""
     for img in container.select("img[alt]"):
         if str(img.get("aria-hidden", "")).lower() == "true":
+            continue
+        if img.find_parent(["nav", "header"]) is not None:
+            continue
+        if img.find_parent(attrs={"role": "navigation"}) is not None:
             continue
         name = normalized_employer_logo_label(img.get("alt", ""), title)
         if not name:
@@ -2686,7 +2705,8 @@ async def extract_company_from_page(page):
         '[class*="employer" i] img[alt], '
         'a[href*="/firma/"] img[alt], '
         'a[href*="/zamestnavatel/"] img[alt], '
-        'img[src*="logo" i][alt]'
+        'main img[src*="logo" i][alt], '
+        '[role="main"] img[src*="logo" i][alt]'
     )
     for frame in await page_contexts(page):
         try:
