@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from html import escape
 from desktop_theme import LIGHT_STYLE, DECISION_LABELS, display_decision
 import gmail_responses
+from resume_routes import choose_resume, resume_group_for_job
 from desktop_widgets import VacancyDelegate, VacancyDetail, icon_pixmap, ui_icon, SOURCE_NAMES
 import io
 import json
@@ -214,7 +215,8 @@ DEFAULTS = {
     "browser_evidence": True,
     "czech_cover_letter": True,
     "prague_only": True,
-    "cv_path": "",
+    "cv_path": "",  # primary Data/BI/Reporting PDF (existing setting)
+    "cv_support_qa_path": "",  # optional separate IT Support / QA PDF
     "first_name": "",
     "last_name": "",
     "email": "",
@@ -994,6 +996,9 @@ def child_env(settings: dict) -> dict:
         "BLOCKED_LOCATION_TERMS": blocked_location,
         "ALLOW_FULL_REMOTE_OUTSIDE_PRAGUE": "true",
         "CV_PATH": str(Path(settings["cv_path"]).expanduser()),
+        "CV_PATH_SUPPORT_QA": str(
+            Path(settings.get("cv_support_qa_path", "")).expanduser()
+        ) if settings.get("cv_support_qa_path", "").strip() else "",
         "CANDIDATE_FIRST_NAME": settings.get("first_name", ""),
         "CANDIDATE_LAST_NAME": settings.get("last_name", ""),
         "CANDIDATE_EMAIL": settings.get("email", ""),
@@ -1796,7 +1801,9 @@ class JobAgentWindow(QMainWindow):
         paths_tab = QWidget()
         paths_layout = QVBoxLayout(paths_tab)
 
-        paths_layout.addWidget(QLabel("CV"))
+        paths_layout.addWidget(QLabel(
+            "CV для Data / BI / Reporting — основной PDF"
+        ))
         cv_row = QHBoxLayout()
         self.cv_edit = QLineEdit()
         self.cv_btn = QPushButton("Browse…")
@@ -1804,6 +1811,28 @@ class JobAgentWindow(QMainWindow):
         cv_row.addWidget(self.cv_edit, 1)
         cv_row.addWidget(self.cv_btn)
         paths_layout.addLayout(cv_row)
+
+        paths_layout.addSpacing(8)
+        paths_layout.addWidget(QLabel(
+            "CV для IT Support / QA / Tester — отдельный PDF"
+        ))
+        support_cv_row = QHBoxLayout()
+        self.support_cv_edit = QLineEdit()
+        self.support_cv_edit.setObjectName("cv_support_qa_path")
+        self.support_cv_btn = QPushButton("Browse…")
+        self.support_cv_btn.clicked.connect(self._browse_support_cv)
+        support_cv_row.addWidget(self.support_cv_edit, 1)
+        support_cv_row.addWidget(self.support_cv_btn)
+        paths_layout.addLayout(support_cv_row)
+        paths_hint = QLabel(
+            "Job Agent определяет тип по названию вакансии и выбирает "
+            "соответствующий PDF до открытия формы. "
+            "Если IT Support / QA CV не настроен, подготовка таких откликов "
+            "останавливается без прикрепления другого резюме."
+        )
+        paths_hint.setWordWrap(True)
+        paths_hint.setTextFormat(Qt.PlainText)
+        paths_layout.addWidget(paths_hint)
 
         paths_layout.addSpacing(10)
         paths_layout.addWidget(QLabel("Persistent browser profile"))
@@ -3022,6 +3051,7 @@ class JobAgentWindow(QMainWindow):
         self.manual_queue_spin.setValue(int(s["manual_queue_min"]))
 
         self.cv_edit.setText(str(s["cv_path"]))
+        self.support_cv_edit.setText(str(s.get("cv_support_qa_path", "")))
         self.profile_edit.setText(str(s["browser_profile"]))
         self.channel_combo.setCurrentText(
             str(s.get("update_channel", APP_CHANNEL))
@@ -3072,6 +3102,7 @@ class JobAgentWindow(QMainWindow):
             "review": self.review_spin.value(),
             "manual_queue_min": self.manual_queue_spin.value(),
             "cv_path": self.cv_edit.text().strip(),
+            "cv_support_qa_path": self.support_cv_edit.text().strip(),
             "browser_profile": self.profile_edit.text().strip(),
             "update_channel": self.channel_combo.currentText().strip(),
             "update_channel_explicit": bool(
@@ -3112,6 +3143,13 @@ class JobAgentWindow(QMainWindow):
         cv = Path(s["cv_path"]).expanduser()
         if require_application and not cv.is_file():
             return f"CV file does not exist:\n{cv}"
+        if require_application and cv.suffix.lower() != ".pdf":
+            return "Основное резюме для Data / BI должно быть PDF."
+        support_cv = str(s.get("cv_support_qa_path", "")).strip()
+        if require_application and support_cv:
+            support_path = Path(support_cv).expanduser()
+            if not support_path.is_file() or support_path.suffix.lower() != ".pdf":
+                return "Резюме для IT Support / QA должно существовать в формате PDF."
 
         if s["review"] > s["min_apply"]:
             return "REVIEW threshold should not exceed target APPLY threshold."
@@ -3127,6 +3165,14 @@ class JobAgentWindow(QMainWindow):
         )
         if path:
             self.cv_edit.setText(path)
+
+    def _browse_support_cv(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose IT Support / QA CV", str(Path.home()),
+            "PDF files (*.pdf);;All files (*)",
+        )
+        if path:
+            self.support_cv_edit.setText(path)
 
     def _browse_profile(self):
         path = QFileDialog.getExistingDirectory(
