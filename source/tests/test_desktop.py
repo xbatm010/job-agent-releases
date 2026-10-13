@@ -53,11 +53,11 @@ class DesktopTests(unittest.TestCase):
     def test_followup_metrics_deduplicate_confirmed_applications(self):
         now = datetime(2026, 10, 13, 10, 0)
         records = [
-            self.row("job:111", 70),
-            self.row("job:111", 90),  # two sites / repeated record
-            self.row("job:222", 80),
-            self.row("job:333", 60),
-            self.row("job:444", 61),
+            {"job_id": "job:111", "title": "Junior Analyst", "status": "REVIEW_PENDING"},
+            {"job_id": "job:111", "title": "Junior Analyst", "status": "REVIEW_PENDING"},
+            {"job_id": "job:222", "title": "BI Specialist", "status": "REVIEW_PENDING"},
+            {"job_id": "job:333", "title": "Reporting Analyst", "status": "REVIEW_PENDING"},
+            {"job_id": "job:444", "title": "Data Specialist", "status": "REVIEW_PENDING"},
         ]
         for record in records:
             record["status"] = "REVIEW_PENDING"
