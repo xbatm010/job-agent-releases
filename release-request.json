@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 56,
   "version": "3.0.9",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.9 Beta broadens the discovery of fresh entry-level Data/BI vacancies in Prague after real user diagnostics showed that 30 of 54 discovered data listings had already been submitted. Add Czech-language Jobs.cz queries for junior data analysis, BI specialists, reporting and data quality, plus the publicly verified Prace.cz Business Intelligence Specialist category. For Jobs.cz and Prace.cz, use local confirmed-submission history to rank unseen vacancies ahead of already-submitted listings BEFORE the existing 80-result-per-source cap; backfill old listings only if too few unseen roles exist. Source-cap diagnostics report anonymous aggregate fresh/history counts without job IDs or candidate details. The final scoring rules, 108 enriched detail pages, 12 browser evidence budget, Prague/location gate, dedup, previous confirmed submission protections, separate Data vs Support/QA CV selection, read-only Gmail, and final human-only Submit remain unchanged. StartupJobs.cz discovery is still best-effort via the existing HTTP and browser fallback; a dynamic page without job cards is not represented as a working search result. Offline CI passed 142/142 tests; real macOS discovery must be checked after upgrade.",
-  "last_published": "3.0.8",
-  "last_sha256": "f59c61a4128e86117ec49b0bb1de2b9e33178c03d9c31651b02996be699d1d79"
+  "last_published": "3.0.9",
+  "last_sha256": "26de08412487363c57c2132fc02e1b352bf3cd761eae873716bff60b09c75067"
 }
