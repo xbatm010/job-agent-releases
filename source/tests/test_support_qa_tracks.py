@@ -350,6 +350,51 @@ class SupportQaTrackTests(unittest.TestCase):
         )
         self.assertEqual([x["job_id"] for x in chosen], ["2000444404"])
 
+    def test_discovery_filter_breakdown_counts_per_track_without_exposing_history(self):
+        from io import StringIO
+        import contextlib
+
+        jobs = [
+            {"title": "Data Analyst", "job_id": "2000091111", "source": "jobs.cz"},
+            {"title": "Junior Data Analyst", "job_id": "2000091112", "source": "jobs.cz"},
+            {"title": "IT Support Specialist", "job_id": "2000091113", "source": "jobs.cz"},
+            {"title": "Junior QA Tester", "job_id": "2000091114", "source": "jobs.cz"},
+            {"title": "Junior QA Tester", "job_id": "2000091115", "source": "jobs.cz"},
+            {"title": "Customer Care Agent", "job_id": "2000091116", "source": "jobs.cz"},
+        ]
+        submitted = {"job:2000091111"}
+        pending = {"job:2000091113"}
+        inactive = {"job:2000091114"}
+        counts = main.discovery_filter_breakdown(jobs, submitted, inactive, pending)
+        self.assertEqual(counts["data"]["submitted"], 1)
+        self.assertEqual(counts["data"]["eligible"], 1)
+        self.assertEqual(counts["support"]["pending_handoff"], 1)
+        self.assertEqual(counts["qa"]["inactive"], 1)
+        self.assertEqual(counts["qa"]["eligible"], 1)
+        self.assertEqual(counts["other"]["eligible"], 1)
+        self.assertEqual(
+            sum(sum(track.values()) for track in counts.values()),
+            len(jobs),
+        )
+        captured = StringIO()
+        with contextlib.redirect_stdout(captured):
+            main.print_discovery_filter_breakdown(jobs, submitted, inactive, pending)
+        lines = captured.getvalue()
+        self.assertIn("data: submitted=1", lines)
+        self.assertNotIn("2000091111", lines)
+        self.assertNotIn("2000091113", lines)
+
+    def test_discovery_filter_breakdown_processed_precedes_other_gates(self):
+        job = {"title": "Senior Data Analyst", "job_id": "2000088001", "source": "jobs.cz"}
+        # Data label may be other because excluded senior titles are screened
+        # before role matching; the exclusion *reason* must remain submitted.
+        counts = main.discovery_filter_breakdown(
+            [job], {"job:2000088001"}, {"job:2000088001"}, {"job:2000088001"}
+        )
+        self.assertEqual(sum(x["submitted"] for x in counts.values()), 1)
+        self.assertEqual(sum(x["pending_handoff"] for x in counts.values()), 0)
+        self.assertEqual(sum(x["inactive"] for x in counts.values()), 0)
+
     def test_search_prioritization_includes_qa_support(self):
         job = vacancy("Junior QA Tester", QA_DESCRIPTION)
         self.assertGreater(main.discovery_priority(job), main.discovery_priority(vacancy("Accountant", "Accounts payable.")))
