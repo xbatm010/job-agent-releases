@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -62,7 +62,7 @@ class DesktopTests(unittest.TestCase):
         settings = self.window._collect_settings()
         self.assertTrue(settings["macos_notifications"])
         self.window._save_preferences()
-        self.assertTrue(desktop.load_settings()["macos_notifications"])
+        self.assertTrue(json.loads(desktop.SETTINGS_FILE.read_text(encoding="utf-8"))["macos_notifications"])
 
     def test_native_notification_candidates_fresh_dates_and_no_historical_spam(self):
         now = datetime(2026, 10, 13, 10, 0)
