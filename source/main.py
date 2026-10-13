@@ -2412,7 +2412,7 @@ def select_discovery_candidates(jobs, processed, inactive_ids, limit):
 def job_search_track(job):
     """Report the scoring family rather than guessing from irrelevant text."""
     category = str(job.get("role_track") or "")
-    if category in {"support", "qa"}:
+    if category in {"data", "support", "qa"}:
         return category
     title = job.get("actual_title") or job.get("title") or ""
     if SEARCH_SUPPORT_QA:
