@@ -50,6 +50,93 @@ class DesktopTests(unittest.TestCase):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
 
+    def test_followup_metrics_deduplicate_confirmed_applications(self):
+        now = datetime(2026, 10, 13, 10, 0)
+        records = [
+            self.row("job:111", 70),
+            self.row("job:111", 90),  # two sites / repeated record
+            self.row("job:222", 80),
+            self.row("job:333", 60),
+            self.row("job:444", 61),
+        ]
+        for record in records:
+            record["status"] = "REVIEW_PENDING"
+        responses = {
+            "job:111": {
+                "stage": "INTERVIEW_SCHEDULED",
+                "next_date": "2026-10-13 09:30",
+            },
+            "job:222": {
+                "stage": "REJECTED",
+                "next_date": "2026-10-12",
+            },
+            "job:333": {
+                "stage": "OFFER",
+                "next_date": "2026-10-14",
+            },
+            "job:444": {
+                "stage": "WAITING",
+                "next_date": "2026-10-11",
+            },
+            "job:unsubmitted": {
+                "stage": "INTERVIEW_COMPLETED",
+                "next_date": "2026-10-01",
+            },
+        }
+        stats, tasks = desktop.application_followup_overview(
+            records,
+            {"job:111", "job:222", "job:333", "job:444"},
+            responses, now,
+        )
+        self.assertEqual(stats, dict(
+            sent=4, replies=3, interviews=1, rejected=1,
+            offers=1, due=2, next_week=1,
+        ))
+        self.assertEqual(
+            [(x["job_id"], x["bucket"]) for x in tasks],
+            [("job:444", "due"), ("job:111", "due"), ("job:333", "next_week")],
+        )
+        self.assertNotIn("job:222", [x["job_id"] for x in tasks])
+        self.assertNotIn("job:unsubmitted", [x["job_id"] for x in tasks])
+
+    def test_followup_date_validation_and_local_day_semantics(self):
+        now = datetime(2026, 10, 13, 10, 0)
+        cases = {
+            "2026-10-12": "due",
+            "2026-10-13": "due",
+            "2026-10-13 09:59": "due",
+            "2026-10-13 10:01": "next_week",
+            "2026-10-20": "next_week",
+            "2026-10-21": "later",
+            "": "", "tomorrow": "", "2026-13-20": "",
+        }
+        for when, expected in cases.items():
+            with self.subTest(date=when):
+                self.assertEqual(desktop.followup_due_bucket(when, now), expected)
+
+    def test_followup_tab_shows_due_tasks_and_opens_dashboard_without_reapplying(self):
+        jid = "job:2000000002"
+        desktop.save_response_tracking(
+            jid, "INTERVIEW_SCHEDULED", "Call recruiter first", "2026-01-10",
+        )
+        self.window._refresh_dashboard()
+        self.assertEqual(self.window.followups_table.rowCount(), 1)
+        self.assertIn("Отправлено: 1", self.window.response_metrics.text())
+        self.assertIn("Ответы: 1", self.window.response_metrics.text())
+        self.assertIn("На этапе интервью: 1", self.window.response_metrics.text())
+        self.assertIn("Требуют внимания: 1", self.window.followups_summary.text())
+        self.assertEqual(self.window.followups_table.item(0, 3).text(), "Срок наступил")
+        self.window.filter("All") if hasattr(self.window, "filter") else self.filter("All")
+        self.window.dashboard_table.selectRow(0)
+        self.window.followups_table.selectRow(0)
+        self.window.open_followup_btn.click()
+        self.assertEqual(
+            self.window._selected_dashboard_record()["job_id"], jid,
+        )
+        self.assertFalse(self.window.prepare_now_btn.isEnabled())
+        self.assertEqual(self.window.workspace_tabs.currentIndex(), 0)
+        self.assertFalse(desktop.HISTORY_FILE.exists())
+
     def test_response_stage_persistence_is_atomic_and_not_application_submission(self):
         jid = "job:2000000002"
         history_before = desktop.HISTORY_FILE.read_bytes() if desktop.HISTORY_FILE.exists() else b""
