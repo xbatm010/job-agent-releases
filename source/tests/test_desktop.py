@@ -51,6 +51,33 @@ class DesktopTests(unittest.TestCase):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
 
+    def test_gmail_is_opt_in_and_does_not_modify_application_history(self):
+        self.assertEqual(self.window.gmail_oauth_edit.text(), "")
+        self.assertEqual(self.window._collect_settings()["gmail_oauth_client_file"], "")
+        self.assertTrue(self.window.gmail_scan_btn.isEnabled())
+        with patch.object(desktop.gmail_responses, "is_connected", return_value=False), \
+                patch.object(desktop.QMessageBox, "information") as alert, \
+                patch.object(desktop.gmail_responses, "scan") as scan:
+            self.window.gmail_scan_btn.click()
+            alert.assert_called_once()
+            scan.assert_not_called()
+        self.assertFalse(desktop.RESPONSE_FILE.exists())
+        self.assertFalse(desktop.HISTORY_FILE.exists())
+
+    def test_gmail_results_dialog_is_readonly_and_does_not_mark_reply(self):
+        rows = [{
+            "subject": "Regarding job 2000000002",
+            "sender": "hr@example.invalid",
+            "job_id": "job:2000000002",
+            "thread_id": "abcdef012345",
+            "reason": "ID вакансии",
+            "snippet": "Invitation",
+        }]
+        with patch.object(desktop.QDialog, "exec", return_value=desktop.QDialog.Accepted):
+            self.window._show_gmail_candidates(rows)
+        self.assertFalse(desktop.RESPONSE_FILE.exists())
+        self.assertFalse(desktop.HISTORY_FILE.exists())
+
     def test_macos_notifications_default_off_and_settings_round_trip(self):
         self.assertFalse(self.window.macos_notification_check.isChecked())
         self.assertFalse(self.window._collect_settings()["macos_notifications"])
