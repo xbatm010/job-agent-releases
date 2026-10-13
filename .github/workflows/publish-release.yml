@@ -652,7 +652,7 @@ jobs:
 
           # Keep every reviewed Gmail module and setup guide when publishing.
           # Release source is a sanitized allowlist; update it for new modules.
-          for f in desktop.py desktop_theme.py desktop_widgets.py main.py updater.py gmail_responses.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md GMAIL_SETUP.md update_manifest.example.json; do
+          for f in desktop.py desktop_theme.py desktop_widgets.py main.py updater.py gmail_responses.py resume_routes.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md GMAIL_SETUP.md update_manifest.example.json; do
             if [ -f "buildsrc/$f" ]; then
               cp "buildsrc/$f" "source/$f"
             fi
@@ -663,6 +663,9 @@ jobs:
           if grep -Eq '^import gmail_responses' buildsrc/desktop.py; then
             test -s source/gmail_responses.py
             test -s source/GMAIL_SETUP.md
+          fi
+          if grep -Eq '^from resume_routes import' buildsrc/desktop.py; then
+            test -s source/resume_routes.py
           fi
 
           if [ -d "buildsrc/tests" ]; then
