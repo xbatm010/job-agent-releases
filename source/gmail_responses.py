@@ -62,7 +62,7 @@ def authorize(path):
     from google_auth_oauthlib.flow import InstalledAppFlow
     flow = InstalledAppFlow.from_client_secrets_file(validated, list(SCOPES))
     credentials = flow.run_local_server(
-        host="localhost", port=0, open_browser=True,
+        host="localhost", port=0, open_browser=True, timeout_seconds=180,
         authorization_prompt_message="Разрешите только чтение Gmail в браузере: {url}",
     )
     if not credentials or not credentials.valid:
@@ -72,11 +72,13 @@ def authorize(path):
 
 
 def disconnect():
-    """Discard local tokens; Google access can also be revoked in Google Account."""
+    """Discard local tokens; report keyring errors instead of claiming removal."""
+    import keyring.errors
     try:
         _keyring().delete_password(KEYRING_SERVICE, KEYRING_USER)
-    except Exception:
-        pass
+    except keyring.errors.PasswordDeleteError:
+        return False  # Nothing stored.
+    return True
 
 
 def _credentials():
