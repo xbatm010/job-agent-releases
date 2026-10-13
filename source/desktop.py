@@ -21,6 +21,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QDialogButtonBox,
     QMenu,
     QScrollArea,
     QSizePolicy,
@@ -124,6 +125,19 @@ DEFAULT_PROFILE_DIR = APP_DIR / "browser_profile"
 HISTORY_FILE = Path.home() / ".job_agent" / "applications.csv"
 VACANCIES_FILE = Path.home() / ".job_agent" / "vacancies.jsonl"
 OVERRIDES_FILE = Path.home() / ".job_agent" / "job_overrides.json"
+RESPONSE_FILE = Path.home() / ".job_agent" / "employer_responses.json"
+
+# Separate from application submission status: these stages are manually entered.
+RESPONSE_STAGES = {
+    "WAITING": "Ожидаем ответ",
+    "CONTACTED": "Рекрутер связался",
+    "INTERVIEW_SCHEDULED": "Собеседование назначено",
+    "INTERVIEW_COMPLETED": "Собеседование пройдено",
+    "REJECTED": "Отказ",
+    "OFFER": "Предложение о работе",
+    "WITHDRAWN": "Отклик отозван",
+}
+
 
 
 def resource_path(name: str) -> Path:
@@ -610,6 +624,89 @@ def delete_job_override(job_id: str) -> bool:
         encoding="utf-8",
     )
     return True
+
+
+def valid_followup_date(value: str) -> bool:
+    """Accept an ISO date or a local interview datetime, without time-zone guessing."""
+    if not value:
+        return True
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M"):
+        try:
+            datetime.strptime(value, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def load_response_tracking() -> dict:
+    """Read a user-managed, independent employer-response timeline.
+
+    Do not infer recruiter decisions from URLs or technical submit statuses.
+    Invalid and older JSON entries cannot override application history.
+    """
+    if not RESPONSE_FILE.exists():
+        return {}
+    try:
+        raw = json.loads(RESPONSE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key, value in raw.items():
+        jid = canonical_local_job_id(key)
+        if not jid or not isinstance(value, dict):
+            continue
+        stage = value.get("stage", "")
+        if stage not in RESPONSE_STAGES:
+            continue
+        date = str(value.get("next_date", "")).strip()
+        out[jid] = {
+            "stage": stage,
+            "notes": str(value.get("notes", ""))[:5000],
+            "next_date": date if valid_followup_date(date) else "",
+            "updated_at": str(value.get("updated_at", "")),
+        }
+    return out
+
+
+def save_response_tracking(job_id, stage, notes="", next_date="") -> dict:
+    """Atomically save manually confirmed stages, never touch applications.csv."""
+    jid = canonical_local_job_id(job_id)
+    if not jid:
+        raise ValueError("Vacancy ID is missing.")
+    if stage not in RESPONSE_STAGES:
+        raise ValueError("Unknown employer-response stage.")
+    notes = str(notes or "").strip()
+    next_date = str(next_date or "").strip()
+    if len(notes) > 5000:
+        raise ValueError("Notes cannot exceed 5000 characters.")
+    if not valid_followup_date(next_date):
+        raise ValueError("Date must be YYYY-MM-DD or YYYY-MM-DD HH:MM.")
+    data = load_response_tracking()
+    entry = {
+        "stage": stage,
+        "notes": notes,
+        "next_date": next_date,
+        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    data[jid] = entry
+    RESPONSE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=str(RESPONSE_FILE.parent),
+            prefix=".responses-", suffix=".tmp", delete=False,
+        ) as fh:
+            temporary = Path(fh.name)
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(temporary, RESPONSE_FILE)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    return entry
 
 
 class QueueWriter(io.TextIOBase):
