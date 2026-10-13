@@ -1,5 +1,6 @@
 import csv
 import shutil
+import subprocess
 import tempfile
 from datetime import datetime, timedelta
 from html import escape
@@ -126,6 +127,7 @@ HISTORY_FILE = Path.home() / ".job_agent" / "applications.csv"
 VACANCIES_FILE = Path.home() / ".job_agent" / "vacancies.jsonl"
 OVERRIDES_FILE = Path.home() / ".job_agent" / "job_overrides.json"
 RESPONSE_FILE = Path.home() / ".job_agent" / "employer_responses.json"
+NOTIFICATION_STATE_FILE = Path.home() / ".job_agent" / "notification_state.json"
 
 # Separate from application submission status: these stages are manually entered.
 RESPONSE_STAGES = {
@@ -221,6 +223,7 @@ DEFAULTS = {
     "update_channel_explicit": False,
     "update_manifest_url": DEFAULT_UPDATE_MANIFEST_URL,
     "auto_check_updates": True,
+    "macos_notifications": False,  # opt-in: no surprise system notifications
 }
 
 
@@ -808,6 +811,127 @@ def application_followup_overview(records, submitted_ids=None, responses=None, n
         item["next_date"], item["title"].lower(),
     ))
     return stats, followups
+
+
+# macOS notifications are opt-in and only checked while Job Agent is running.
+# A local delivery journal limits repeat alerts across refreshes and restarts.
+NOTIFICATION_DAILY_LIMIT = 5
+
+
+def native_notification_candidates(records, submitted_ids, responses, sent_keys,
+                                   now=None, daily_remaining=5):
+    """Choose fresh reminders only; do not notify for historical overdue tasks.
+
+    A dated-only task alerts during daytime on the exact due day. A timed
+    task alerts at its deadline (up to 60 minutes afterward); interviews alert
+    within the 60 minutes *before* the appointment. One alert per
+    (canonical vacancy, stage, date), with a per-day cap.
+    """
+    now = now or datetime.now()
+    if now.tzinfo is not None:
+        now = now.astimezone().replace(tzinfo=None)
+    _, reminders = application_followup_overview(
+        records, submitted_ids, responses, now,
+    )
+    due = []
+    for task in reminders:
+        stage = task["stage"]
+        date_text = task["next_date"]
+        key = "|".join((task["job_id"], stage, date_text))
+        if key in sent_keys or stage in FOLLOWUP_CLOSED_STAGES:
+            continue
+        if len(date_text) == 10:
+            when = datetime.strptime(date_text, "%Y-%m-%d")
+            # No late-night or stale-date notifications.
+            fresh = when.date() == now.date() and 9 <= now.hour < 20
+        else:
+            when = datetime.strptime(date_text, "%Y-%m-%d %H:%M")
+            delta = (when - now).total_seconds()
+            if stage == "INTERVIEW_SCHEDULED":
+                fresh = 0 <= delta <= 3600
+            else:
+                fresh = -3600 <= delta <= 0
+        if not fresh:
+            continue
+        title = str(task["title"])[:90]
+        company = str(task["company"])[:75]
+        if stage == "INTERVIEW_SCHEDULED":
+            text = f"Собеседование: {title} · {company} · {date_text}"
+        else:
+            text = f"Следующее действие: {title} · {company} · {date_text}"
+        due.append({
+            "key": key, "job_id": task["job_id"],
+            "message": text[:240], "due_at": date_text,
+        })
+    due.sort(key=lambda item: (item["due_at"], item["key"]))
+    return due[:max(0, daily_remaining)]
+
+
+def load_notification_state():
+    if not NOTIFICATION_STATE_FILE.exists():
+        return {"events": {}, "daily_counts": {}}
+    try:
+        raw = json.loads(NOTIFICATION_STATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("not an object")
+        events = raw.get("events", {})
+        counts = raw.get("daily_counts", {})
+        if not isinstance(events, dict) or not isinstance(counts, dict):
+            raise ValueError("invalid notification journal")
+        # Keep only a bounded history; no credentials or message contents.
+        return {
+            "events": {
+                str(k): str(v) for k, v in list(events.items())[-1000:]
+                if isinstance(k, str) and isinstance(v, str)
+            },
+            "daily_counts": {
+                str(k): max(0, min(NOTIFICATION_DAILY_LIMIT, int(v)))
+                for k, v in counts.items()
+                if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
+            },
+        }
+    except (OSError, ValueError, TypeError):
+        return {"events": {}, "daily_counts": {}}
+
+
+def save_notification_state(state):
+    NOTIFICATION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", delete=False,
+            prefix=".notification-", suffix=".tmp",
+            dir=str(NOTIFICATION_STATE_FILE.parent),
+        ) as fh:
+            temp_path = Path(fh.name)
+            json.dump(state, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(temp_path, NOTIFICATION_STATE_FILE)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+
+
+def post_macos_notification(message):
+    """Request a native macOS alert; never evaluate untrusted text as script.
+
+    Only a static AppleScript is evaluated; vacancy data is passed as argv,
+    so a title containing quotes or AppleScript syntax cannot execute code.
+    A successful spawn does not guarantee OS notification permission.
+    """
+    if sys.platform != "darwin":
+        return False
+    script = (
+        'on run argv\n'
+        '  display notification (item 1 of argv) with title "Job Agent"\n'
+        'end run'
+    )
+    subprocess.Popen(
+        ["/usr/bin/osascript", "-e", script, "--", str(message)[:240]],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, close_fds=True,
+    )
+    return True
 
 
 class QueueWriter(io.TextIOBase):
