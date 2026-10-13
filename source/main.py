@@ -114,6 +114,8 @@ MIN_REVIEW_SCORE = int(os.getenv("MIN_REVIEW_SCORE", "55"))
 MANUAL_REVIEW_APPLY_MIN_SCORE = int(os.getenv("MANUAL_REVIEW_APPLY_MIN_SCORE", "65"))
 MAX_JOBS_TO_REVIEW = int(os.getenv("MAX_JOBS_TO_REVIEW", "36"))
 CV_PATH = os.getenv("CV_PATH", "").strip()
+CV_PATH_DATA = CV_PATH  # Immutable per-run primary CV, even after switching jobs
+CV_PATH_SUPPORT_QA = os.getenv("CV_PATH_SUPPORT_QA", "").strip()
 BROWSER_PROFILE_DIR = os.getenv("BROWSER_PROFILE_DIR", "./browser_profile")
 SOURCE_JOBS_CZ = os.getenv("SOURCE_JOBS_CZ", "true").lower() == "true"
 SOURCE_PRACE_CZ = os.getenv("SOURCE_PRACE_CZ", "true").lower() == "true"
@@ -7199,6 +7201,12 @@ async def hold_for_manual_final_submit(page, result):
 
 
 async def prepare_application(job):
+    # All supported form upload paths use CV_PATH. Select before launching the
+    # browser so every ATS handler receives the exact same PDF for this job.
+    from resume_routes import choose_resume
+    global CV_PATH
+    group, CV_PATH = choose_resume(job, CV_PATH_DATA, CV_PATH_SUPPORT_QA)
+    print(f"📄 CV for {group}: {Path(CV_PATH).name}")
     async with async_playwright() as p:
         profile_dir = resolve_browser_profile_dir()
         browser = await p.chromium.launch_persistent_context(
@@ -7715,7 +7723,8 @@ def current_agent_version():
 async def main():
     print(f"🚀 Starting Job Agent v{current_agent_version()} — three-source data-role discovery")
     print(f"🔍 SEARCH_ONLY: {SEARCH_ONLY}")
-    print(f"📄 CV: {Path(CV_PATH).resolve()}")
+    print(f"📄 Primary Data/BI CV: {Path(CV_PATH_DATA).name or '(missing)'}")
+    print(f"📄 IT Support/QA CV: {Path(CV_PATH_SUPPORT_QA).name if CV_PATH_SUPPORT_QA else '(not configured)'}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
     print(f"🔐 CONFIRMATION_GATE: {CONFIRMATION_GATE}")
     print(f"🧭 ALLOW_JOBS_HANDOFF: {ALLOW_JOBS_HANDOFF}")
