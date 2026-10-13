@@ -39,6 +39,7 @@ class DesktopTests(unittest.TestCase):
         patch.object(desktop, "load_job_overrides", side_effect=lambda: self.overrides).start()
         patch.object(desktop, "processed_count", return_value=1).start()
         patch.object(desktop, "HISTORY_FILE", Path(self.temp.name) / "applications.csv").start()
+        patch.object(desktop, "RESPONSE_FILE", Path(self.temp.name) / "employer_responses.json").start()
         patch.object(desktop, "SETTINGS_FILE", Path(self.temp.name) / "settings.json").start()
         self.window = desktop.JobAgentWindow()
         self.window.timer.stop()
@@ -48,6 +49,79 @@ class DesktopTests(unittest.TestCase):
     def filter(self, value):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
+
+    def test_response_stage_persistence_is_atomic_and_not_application_submission(self):
+        jid = "job:2000000002"
+        history_before = desktop.HISTORY_FILE.read_bytes() if desktop.HISTORY_FILE.exists() else b""
+        self.assertEqual(desktop.load_response_tracking(), {})
+        entry = desktop.save_response_tracking(
+            jid, "INTERVIEW_SCHEDULED", "<b>HR call</b>", "2026-10-24 14:30"
+        )
+        self.assertEqual(entry["stage"], "INTERVIEW_SCHEDULED")
+        self.assertEqual(desktop.load_response_tracking()[jid]["next_date"], "2026-10-24 14:30")
+        self.assertEqual(desktop.HISTORY_FILE.read_bytes() if desktop.HISTORY_FILE.exists() else b"", history_before)
+        with self.assertRaises(ValueError):
+            desktop.save_response_tracking(jid, "SUBMITTED_MANUALLY")
+        with self.assertRaises(ValueError):
+            desktop.save_response_tracking(jid, "OFFER", next_date="tomorrow")
+        self.assertEqual(
+            desktop.load_response_tracking()[jid]["stage"], "INTERVIEW_SCHEDULED"
+        )
+        desktop.RESPONSE_FILE.write_text("{ invalid JSON", encoding="utf-8")
+        self.assertEqual(desktop.load_response_tracking(), {})
+
+    def test_response_stage_ui_is_explicit_only_for_submitted_jobs(self):
+        self.window._refresh_dashboard()
+        self.window.dashboard_table.selectRow(0)
+        self.assertFalse(self.window.response_action.isEnabled())
+
+        submitted_index = next(
+            i for i, record in enumerate(self.window.dashboard_records)
+            if record["job_id"] == "job:2000000002"
+        )
+        self.window.dashboard_table.selectRow(submitted_index)
+        self.assertTrue(self.window.response_action.isEnabled())
+        self.assertTrue(self.window.response_summary.isVisible() or not self.window.isVisible())
+        self.assertIn("Ожидаем ответ", self.window.response_summary.text())
+
+        def set_dialog_fields(dialog):
+            combo = dialog.findChild(desktop.QComboBox, "response_stage_combo")
+            stage_index = combo.findData("INTERVIEW_SCHEDULED")
+            self.assertGreater(stage_index, 0)
+            combo.setCurrentIndex(stage_index)
+            dialog.findChild(desktop.QLineEdit, "response_next_date").setText("2026-10-24 14:30")
+            dialog.findChild(desktop.QTextEdit, "response_notes").setPlainText("<hr> Invitation")
+            return desktop.QDialog.Accepted
+
+        with patch.object(desktop.QDialog, "exec", set_dialog_fields):
+            self.window.response_action.trigger()
+        data = desktop.load_response_tracking()["job:2000000002"]
+        self.assertEqual(data["stage"], "INTERVIEW_SCHEDULED")
+        self.assertEqual(data["notes"], "<hr> Invitation")
+        self.assertEqual(
+            self.window.dashboard_decision_filter.findData("RESPONDED") >= 0,
+            True,
+        )
+        self.assertIn("Собеседование назначено", self.window.response_summary.text())
+        self.assertIn("<hr> Invitation", self.window.response_summary.text())
+        self.assertEqual(self.window.response_summary.textFormat(), Qt.PlainText)
+
+        self.window.extra_filter_actions["RESPONDED"].trigger()
+        self.assertEqual(
+            [r["job_id"] for r in self.window.dashboard_records],
+            ["job:2000000002"],
+        )
+        self.assertFalse(self.window.prepare_now_btn.isEnabled())
+        with patch.object(desktop.QDialog, "exec", return_value=desktop.QDialog.Rejected):
+            self.window.response_action.trigger()
+        self.assertEqual(desktop.load_response_tracking()["job:2000000002"], data)
+
+        self.window.filter("All") if hasattr(self.window, "filter") else self.filter("All")
+        self.window.dashboard_table.selectRow(0)
+        with patch.object(desktop.QMessageBox, "information") as info:
+            self.window._edit_response_tracking()
+        info.assert_called_once()
+        self.assertEqual(len(desktop.load_response_tracking()), 1)
 
     def test_needs_attention_filter_shows_incomplete_forms_and_manual_handoffs(self):
         self.records[0]["status"] = "FORM_PARTIALLY_FILLED"
