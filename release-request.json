@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 49,
   "version": "3.0.3",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.3 beta adds two independent local PDF resume selectors under Settings > Files: primary CV for Data/BI/Reporting and secondary CV for IT Support/QA/Tester. During each user-authorized application preparation, the agent matches the vacancy's actual title conservatively (including Czech variants) and selects the appropriate file before the browser form or file picker opens. Prepare Now displays the chosen CV basename for confirmation. A support/QA title cannot fall back silently to a Data/BI PDF if the secondary file is absent. On Jobs.cz, support/QA flows no longer accept a generic previously saved profile CV without evidence of the selected filename. Existing Data/BI CV behavior and final human-only Submit safeguards are unchanged. The release preserves the new resume_routes.py in sanitized source. The existing discovery and ranking are still Data/BI-focused; broader IT Support/QA search will be developed separately. Offline regression suite: 113/113 passing; macOS packaging and user acceptance remain to be verified.",
-  "last_published": "3.0.2",
-  "last_sha256": "b8296a8570addf4c8eac71e16024568423462f00b46c99341186e1470ad9e35d"
+  "last_published": "3.0.3",
+  "last_sha256": "662d28ce4d65f7fe67d1167b4b1550b2343899b078dc028eb2ca5bc916701db9"
 }
