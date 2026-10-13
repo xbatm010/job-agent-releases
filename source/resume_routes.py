@@ -14,6 +14,7 @@ SUPPORT_QA_PATTERNS = [
     r"\b(?:it|tech(?:nical)?|customer|desktop|application|software|product|user)\s+support\b",
     r"\b(?:support|service\s*desk|help\s*desk)\s+(?:analyst|specialist|engineer|technician|agent|associate)\b",
     r"\bhelp\s*desk\b", r"\bservice\s*desk\b",
+    r"\b(?:l1|level\s*1|first\s*line|1st\s*line)\s+support\b",
     r"\bit\s+(?:technician|technician|administrator)\b",
     # Manual QA / tester titles, avoid penetration/security testers.
     r"\b(?:manual|software|qa|quality\s+assurance)\s+test(?:er|ing|analyst|engineer)?\b",
