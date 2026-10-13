@@ -210,6 +210,52 @@ class SupportQaTrackTests(unittest.TestCase):
         shortlist = main.select_review_shortlist(rows, 36)
         self.assertTrue(all(r["decision"] == "REVIEW" for r in shortlist))
 
+    def test_track_diagnostics_distinguish_candidate_supply_from_rejections(self):
+        jobs = [
+            {"title": "Junior Data Analyst", "decision": "REVIEW"},
+            {"title": "Junior QA Tester", "role_track": "qa", "decision": "SKIP"},
+            {"title": "IT Support Specialist", "role_track": "support", "decision": "REVIEW"},
+            {"title": "Finance Clerk", "decision": "SKIP"},
+        ]
+        self.assertEqual(
+            main.search_track_counts(jobs),
+            {"data": 1, "support": 1, "qa": 1, "other": 1},
+        )
+        self.assertEqual(
+            main.search_track_counts(jobs, {"APPLY", "REVIEW"}),
+            {"data": 1, "support": 1, "qa": 0, "other": 0},
+        )
+
+    def test_manual_review_suggestions_are_diverse_when_safe(self):
+        def job(title, track, score):
+            return {
+                "title": title, "role_track": track,
+                "source": "jobs.cz", "role_class": "target",
+                "evidence_quality": "strong", "location_gate": "prague_area",
+                "hard_experience": False, "decision": "REVIEW",
+                "score": score, "candidate_fit": 20, "job_id": title,
+            }
+        candidates = [
+            job("IT Support Specialist", "support", 69),
+            job("IT podpora", "support", 69),
+            job("Helpdesk", "support", 69),
+            job("Junior Data Analyst", "data", 67),
+            job("QA Analyst", "qa", 65),
+        ]
+        selected = main.safe_manual_review_candidates(candidates, 3)
+        self.assertEqual(
+            [x["role_track"] for x in selected],
+            ["data", "qa", "support"],
+        )
+        self.assertEqual(len(selected), 3)
+        # Never present weak-evidence QA only to satisfy track diversity.
+        candidates[-1]["evidence_quality"] = "weak"
+        selected = main.safe_manual_review_candidates(candidates, 3)
+        self.assertEqual(
+            [x["role_track"] for x in selected],
+            ["data", "support", "support"],
+        )
+
     def test_search_prioritization_includes_qa_support(self):
         job = vacancy("Junior QA Tester", QA_DESCRIPTION)
         self.assertGreater(main.discovery_priority(job), main.discovery_priority(vacancy("Accountant", "Accounts payable.")))
