@@ -815,7 +815,7 @@ def application_followup_overview(records, submitted_ids=None, responses=None, n
 
 # macOS notifications are opt-in and only checked while Job Agent is running.
 # A local delivery journal limits repeat alerts across refreshes and restarts.
-NOTIFICATION_DAILY_LIMIT = 5
+NOTIFICATION_DAILY_LIMIT = 3
 
 
 def native_notification_candidates(records, submitted_ids, responses, sent_keys,
@@ -1173,6 +1173,10 @@ class JobAgentWindow(QMainWindow):
         self.available_update = None
         self.dashboard_all_records = []
         self.dashboard_records = []
+        self._notification_state = load_notification_state()
+        self._notification_delivery_failed = False
+        self._current_submitted_ids = set()
+        self._current_responses = {}
 
         self._build_ui()
         self._load_widgets()
@@ -1835,6 +1839,30 @@ class JobAgentWindow(QMainWindow):
 
         tabs.addTab(updates_tab, "Обновления")
 
+        notifications_tab = QWidget()
+        notifications_layout = QVBoxLayout(notifications_tab)
+        self.macos_notification_check = QCheckBox(
+            "Включить уведомления macOS о сроках и собеседованиях"
+        )
+        self.macos_notification_check.setToolTip(
+            "Только при открытом Job Agent. Не более 3 уведомлений в день, "
+            "без повторения для того же события."
+        )
+        notifications_layout.addWidget(self.macos_notification_check)
+        notifications_explainer = QLabel(
+            "Job Agent покажет напоминание в macOS, когда наступит срок "
+            "следующего действия, либо за час до назначенного собеседования. "
+            "Уведомления работают только пока приложение открыто. "
+            "Просроченные даты остаются во вкладке «Отклики», "
+            "но не вызывают старых системных уведомлений. "
+            "macOS может потребовать разрешить уведомления для osascript."
+        )
+        notifications_explainer.setWordWrap(True)
+        notifications_explainer.setTextFormat(Qt.PlainText)
+        notifications_layout.addWidget(notifications_explainer)
+        notifications_layout.addStretch()
+        tabs.addTab(notifications_tab, "Уведомления")
+
         for i in range(tabs.count()):
             page = tabs.widget(i)
             label = tabs.tabText(i)
@@ -2155,6 +2183,8 @@ class JobAgentWindow(QMainWindow):
                 item.setToolTip(value)
                 self.applications_table.setItem(row, col, item)
         self.applications_count.setText(f"Попыток отклика в истории: {len(application_records)}")
+        self._current_submitted_ids = submitted_ids
+        self._current_responses = responses
         self._refresh_followups(submitted_ids, responses)
         self._dashboard_selection_changed()
 
@@ -2681,6 +2711,9 @@ class JobAgentWindow(QMainWindow):
         self.auto_update_check.setChecked(
             bool(s.get("auto_check_updates", True))
         )
+        self.macos_notification_check.setChecked(
+            bool(s.get("macos_notifications", False))
+        )
 
     def _persist_update_channel(self, channel):
         channel = str(channel or "").strip().lower()
@@ -2724,6 +2757,7 @@ class JobAgentWindow(QMainWindow):
                 or DEFAULT_UPDATE_MANIFEST_URL
             ),
             "auto_check_updates": self.auto_update_check.isChecked(),
+            "macos_notifications": self.macos_notification_check.isChecked(),
         }
 
     def _validate_settings(self, s, require_application=None):
@@ -3058,9 +3092,60 @@ class JobAgentWindow(QMainWindow):
             details = "\n".join(info.get("details", []))
             label.setToolTip("Последний поиск: " + data.get("saved_at", "—") + ("\n" + details if details else ""))
 
+    def _check_native_notifications(self):
+        """Opt-in local notification checks; no background tasks when closed."""
+        if (
+            sys.platform != "darwin"
+            or not self.settings.get("macos_notifications", False)
+            or self._notification_delivery_failed
+        ):
+            return
+        now = datetime.now()
+        date_key = now.date().isoformat()
+        state = self._notification_state
+        events = state["events"]
+        counts = state["daily_counts"]
+        remaining = NOTIFICATION_DAILY_LIMIT - counts.get(date_key, 0)
+        if remaining <= 0:
+            return
+        choices = native_notification_candidates(
+            self.dashboard_all_records, self._current_submitted_ids,
+            self._current_responses, events,
+            now=now, daily_remaining=1,
+        )
+        if not choices:
+            return
+        choice = choices[0]
+        try:
+            if not post_macos_notification(choice["message"]):
+                return
+        except OSError as exc:
+            self._notification_delivery_failed = True
+            self._append_log(
+                "macOS notifications unavailable: "
+                + type(exc).__name__
+                + ". Reminders remain visible in Applications."
+            )
+            return
+
+        events[choice["key"]] = date_key
+        counts[date_key] = counts.get(date_key, 0) + 1
+        cutoff = (now - timedelta(days=90)).date().isoformat()
+        state["events"] = {k: v for k, v in events.items() if v >= cutoff}
+        state["daily_counts"] = {k: v for k, v in counts.items() if k >= cutoff}
+        try:
+            save_notification_state(state)
+        except OSError:
+            # Keep the in-memory dedupe for this app session, even if the
+            # local disk is temporarily unwritable.
+            self._append_log(
+                "Could not persist notification history; please check disk permissions."
+            )
+
     def _refresh_stats(self):
         self.processed_value.setText(str(processed_count()))
         self._refresh_dashboard()
+        self._check_native_notifications()
         self._refresh_source_status()
         if playwright_browser_present():
             self.browser_status_value.setText("Ready")
