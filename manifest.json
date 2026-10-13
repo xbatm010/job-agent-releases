@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "2.9.14",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.14/job-agent-2.9.14-macos.zip",
-      "sha256": "126421647253a9a75babbbd956525fec57a0303b1d65c44b0f515e91e0e58bda",
-      "notes": "Job Agent v2.9.14 beta corrects false employer detection introduced by the new Jobs.cz logo extraction in v2.9.13: the Master Data Specialist vacancy was incorrectly attributed to 'Domů' (the Czech home-navigation label). Employer validation now rejects exact navigation/control labels such as 'Domů', 'Úvod', 'Home', 'Zpět', 'Menu' and 'Přihlásit se' across structured HTML, metadata, logo and browser extraction, without rejecting real employer names containing those words (e.g. Home Credit a.s.). Static HTML logo extraction skips header and navigation images; Chromium fallback restricts generic logo-source matching to main-content regions. Preserves real improved names including Skupina ČEZ, Alza.cz, Seznam.cz, TE Connectivity and ČEPS. All 76 offline regression tests passed in GitHub Actions (including three new Domů/logo tests); scoring, application flow and final manual Submit protections are unchanged.",
+      "version": "2.9.15",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v2.9.15/job-agent-2.9.15-macos.zip",
+      "sha256": "042d6ba7e45a8e60e0bcaaf36797bb011b8045c8298254da76415425c6f66a6d",
+      "notes": "Job Agent v2.9.15 beta fixes a new false employer label from the real v2.9.14 Mac log. On Jobs.cz Master Data Specialist (job 2001457607), a certification graphic appeared as company 'Top Employer 2026' after an earlier navigation-logo bug 'Domů' was fixed. The app now conservatively rejects exact generic employer-award/certification labels including Top Employer(s), Certified Top Employer, Best Employer, Great Place to Work, Zaměstnavatel roku and Nejlepší zaměstnavatel with year/region suffixes, across employer logo alt texts, search cards, rendered pages, metadata, DOM and structured data. Whole-label matching avoids rejecting real employers such as Skupina ČEZ, TE Connectivity and Top Employer Solutions s.r.o. When no supported company name is present, display unknown instead of guessing. No score or application-safety changes; final Submit stays manual. All 79 offline regression tests passed in GitHub Actions.",
       "min_version": "2.3.1"
     }
   }
