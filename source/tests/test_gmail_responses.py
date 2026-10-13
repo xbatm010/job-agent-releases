@@ -110,6 +110,36 @@ class GmailReadOnlyTests(unittest.TestCase):
         self.assertNotIn("stage", matched[0])
         self.assertNotIn("notes", matched[0])
 
+    def test_reply_labels_are_conservative_and_advisory_only(self):
+        examples = [
+            ("Zařadili jsme Vás do výběrového řízení", "", "RECEIPT"),
+            ("Many thanks for your CV", "", "RECEIPT"),
+            ("Výsledek výběrového řízení", "", "RESULT"),
+            ("Výběrové řízení na pozici IT Business Analytik", "", "OTHER"),
+            ("Invitation to interview", "", "INTERVIEW"),
+            ("Nabídka Data Analyst", "Rádi bychom Vás pozvali na pohovor.", "INTERVIEW"),
+            ("Re: Job", "Unfortunately you were not selected.", "REJECTION"),
+            ("Re: Job", "We regret to inform you", "REJECTION"),
+            ("Hello", "See attached", "OTHER"),
+        ]
+        for subject, snippet, expected in examples:
+            with self.subTest(subject=subject):
+                self.assertEqual(gmail.classify_reply(subject, snippet), expected)
+
+    def test_match_carries_readable_job_and_preview_without_stage_write(self):
+        original = self.email(
+            subject="Zařadili jsme Vás do výběrového řízení 2001111111",
+            sender="HR <recruit@example.invalid>",
+            snippet="<b>děkujeme</b> za Váš zájem",
+        )
+        result = gmail.suggest_matches([original], self.records, self.submitted)[0]
+        self.assertEqual(result["job_title"], "BI Reporting Analyst")
+        self.assertEqual(result["job_company"], "Example Analytics s.r.o.")
+        self.assertEqual(result["category"], "RECEIPT")
+        self.assertIn("<b>", result["snippet"])
+        self.assertNotIn("stage", result)
+        self.assertNotIn("next_date", result)
+
     def test_scans_readonly_headers_with_bounded_gmail_api(self):
         inbox_list = MagicMock()
         inbox_list.execute.return_value = {"messages": [
