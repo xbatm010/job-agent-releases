@@ -40,6 +40,7 @@ class DesktopTests(unittest.TestCase):
         patch.object(desktop, "processed_count", return_value=1).start()
         patch.object(desktop, "HISTORY_FILE", Path(self.temp.name) / "applications.csv").start()
         patch.object(desktop, "RESPONSE_FILE", Path(self.temp.name) / "employer_responses.json").start()
+        patch.object(desktop, "NOTIFICATION_STATE_FILE", Path(self.temp.name) / "notification_state.json").start()
         patch.object(desktop, "SETTINGS_FILE", Path(self.temp.name) / "settings.json").start()
         self.window = desktop.JobAgentWindow()
         self.window.timer.stop()
@@ -49,6 +50,113 @@ class DesktopTests(unittest.TestCase):
     def filter(self, value):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
+
+    def test_macos_notifications_default_off_and_settings_round_trip(self):
+        self.assertFalse(self.window.macos_notification_check.isChecked())
+        self.assertFalse(self.window._collect_settings()["macos_notifications"])
+        with patch.object(desktop.sys, "platform", "darwin"), \
+                patch.object(desktop, "post_macos_notification") as notifier:
+            self.window._refresh_stats()
+            notifier.assert_not_called()
+        self.window.macos_notification_check.setChecked(True)
+        settings = self.window._collect_settings()
+        self.assertTrue(settings["macos_notifications"])
+        self.window._save_preferences()
+        self.assertTrue(json.loads(desktop.SETTINGS_FILE.read_text(encoding="utf-8"))["macos_notifications"])
+
+    def test_native_notification_candidates_fresh_dates_and_no_historical_spam(self):
+        now = datetime(2026, 10, 13, 10, 0)
+        ids = {f"job:{x}" for x in range(1, 9)}
+        records = [{"job_id": jid, "title": jid} for jid in ids]
+        responses = {
+            "job:1": {"stage": "WAITING", "next_date": "2026-10-13"},
+            "job:2": {"stage": "CONTACTED", "next_date": "2026-10-12"},
+            "job:3": {"stage": "INTERVIEW_SCHEDULED", "next_date": "2026-10-13 10:45"},
+            "job:4": {"stage": "CONTACTED", "next_date": "2026-10-13 10:45"},
+            "job:5": {"stage": "WAITING", "next_date": "2026-10-13 09:45"},
+            "job:6": {"stage": "WAITING", "next_date": "2026-10-13 08:00"},
+            "job:7": {"stage": "REJECTED", "next_date": "2026-10-13"},
+            "job:8": {"stage": "WAITING", "next_date": "2026-10-14"},
+        }
+        selected = desktop.native_notification_candidates(
+            records, ids, responses, {}, now, daily_remaining=5,
+        )
+        self.assertEqual(
+            {x["job_id"] for x in selected},
+            {"job:1", "job:3", "job:5"},
+        )
+        self.assertTrue(any("Собеседование" in x["message"] for x in selected))
+        self.assertEqual(
+            desktop.native_notification_candidates(
+                records, ids, responses, {x["key"]: "2026-10-13" for x in selected},
+                now, daily_remaining=5,
+            ), [],
+        )
+        self.assertEqual(
+            desktop.native_notification_candidates(
+                records, ids, responses, {}, datetime(2026, 10, 13, 3),
+                daily_remaining=5,
+            ), [],
+        )
+        self.assertEqual(
+            desktop.native_notification_candidates(
+                records, ids, responses, {}, now, daily_remaining=0,
+            ), [],
+        )
+
+    def test_notification_delivery_persists_dedup_and_daily_cap(self):
+        record = self.records[1]
+        date_text = datetime.now().strftime("%Y-%m-%d")
+        desktop.save_response_tracking(
+            record["job_id"], "WAITING", next_date=date_text,
+        )
+        self.window.settings["macos_notifications"] = True
+        self.window._refresh_dashboard()
+        with patch.object(desktop.sys, "platform", "darwin"), \
+                patch.object(desktop, "post_macos_notification", return_value=True) as notify:
+            # A date-only due item only alerts from 09:00 to 20:00.
+            with patch.object(desktop, "datetime", wraps=datetime) as fake_dt:
+                fake_dt.now.return_value = datetime(2026, 10, 13, 11, 0)
+                # Real stored next_date is today on the test runner; do
+                # not assume the CI's wall clock matches this fixed date.
+                desktop.save_response_tracking(
+                    record["job_id"], "WAITING", next_date="2026-10-13",
+                )
+                self.window._refresh_dashboard()
+                self.window._check_native_notifications()
+                self.window._check_native_notifications()
+            notify.assert_called_once()
+            first = desktop.load_notification_state()
+            self.assertEqual(len(first["events"]), 1)
+            self.assertEqual(first["daily_counts"]["2026-10-13"], 1)
+            # Re-opening/reloading the journal must not resend a previous key.
+            self.window._notification_state = desktop.load_notification_state()
+            with patch.object(desktop, "datetime", wraps=datetime) as fake_dt:
+                fake_dt.now.return_value = datetime(2026, 10, 13, 11, 2)
+                self.window._check_native_notifications()
+            notify.assert_called_once()
+            self.assertFalse(desktop.HISTORY_FILE.exists())
+            self.window._notification_state["daily_counts"]["2026-10-13"] = 3
+            with patch.object(desktop, "datetime", wraps=datetime) as fake_dt:
+                fake_dt.now.return_value = datetime(2026, 10, 13, 12, 0)
+                self.window._check_native_notifications()
+            notify.assert_called_once()
+
+    def test_osascript_uses_static_script_and_argv_never_interpolates_job_title(self):
+        message = 'Interview "x"\n do shell script "touch /tmp/unsafe"\x00'
+        with patch.object(desktop.sys, "platform", "darwin"), \
+                patch.object(desktop.subprocess, "Popen") as popen:
+            self.assertTrue(desktop.post_macos_notification(message))
+            argv = popen.call_args.args[0]
+            self.assertEqual(argv[0], "/usr/bin/osascript")
+            self.assertEqual(argv[1], "-e")
+            self.assertNotIn(message, argv[2])
+            self.assertEqual(argv[-1], 'Interview "x" do shell script "touch /tmp/unsafe"')
+            self.assertEqual(popen.call_args.kwargs["stdin"], desktop.subprocess.DEVNULL)
+        with patch.object(desktop.sys, "platform", "linux"), \
+                patch.object(desktop.subprocess, "Popen") as popen:
+            self.assertFalse(desktop.post_macos_notification(message))
+            popen.assert_not_called()
 
     def test_followup_metrics_deduplicate_confirmed_applications(self):
         now = datetime(2026, 10, 13, 10, 0)

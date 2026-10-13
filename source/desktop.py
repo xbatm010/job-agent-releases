@@ -1,5 +1,6 @@
 import csv
 import shutil
+import subprocess
 import tempfile
 from datetime import datetime, timedelta
 from html import escape
@@ -126,6 +127,7 @@ HISTORY_FILE = Path.home() / ".job_agent" / "applications.csv"
 VACANCIES_FILE = Path.home() / ".job_agent" / "vacancies.jsonl"
 OVERRIDES_FILE = Path.home() / ".job_agent" / "job_overrides.json"
 RESPONSE_FILE = Path.home() / ".job_agent" / "employer_responses.json"
+NOTIFICATION_STATE_FILE = Path.home() / ".job_agent" / "notification_state.json"
 
 # Separate from application submission status: these stages are manually entered.
 RESPONSE_STAGES = {
@@ -221,6 +223,7 @@ DEFAULTS = {
     "update_channel_explicit": False,
     "update_manifest_url": DEFAULT_UPDATE_MANIFEST_URL,
     "auto_check_updates": True,
+    "macos_notifications": False,  # opt-in: no surprise system notifications
 }
 
 
@@ -810,6 +813,129 @@ def application_followup_overview(records, submitted_ids=None, responses=None, n
     return stats, followups
 
 
+# macOS notifications are opt-in and only checked while Job Agent is running.
+# A local delivery journal limits repeat alerts across refreshes and restarts.
+NOTIFICATION_DAILY_LIMIT = 3
+
+
+def native_notification_candidates(records, submitted_ids, responses, sent_keys,
+                                   now=None, daily_remaining=5):
+    """Choose fresh reminders only; do not notify for historical overdue tasks.
+
+    A dated-only task alerts during daytime on the exact due day. A timed
+    task alerts at its deadline (up to 60 minutes afterward); interviews alert
+    within the 60 minutes *before* the appointment. One alert per
+    (canonical vacancy, stage, date), with a per-day cap.
+    """
+    now = now or datetime.now()
+    if now.tzinfo is not None:
+        now = now.astimezone().replace(tzinfo=None)
+    _, reminders = application_followup_overview(
+        records, submitted_ids, responses, now,
+    )
+    due = []
+    for task in reminders:
+        stage = task["stage"]
+        date_text = task["next_date"]
+        key = "|".join((task["job_id"], stage, date_text))
+        if key in sent_keys or stage in FOLLOWUP_CLOSED_STAGES:
+            continue
+        if len(date_text) == 10:
+            when = datetime.strptime(date_text, "%Y-%m-%d")
+            # No late-night or stale-date notifications.
+            fresh = when.date() == now.date() and 9 <= now.hour < 20
+        else:
+            when = datetime.strptime(date_text, "%Y-%m-%d %H:%M")
+            delta = (when - now).total_seconds()
+            if stage == "INTERVIEW_SCHEDULED":
+                fresh = 0 <= delta <= 3600
+            else:
+                fresh = -3600 <= delta <= 0
+        if not fresh:
+            continue
+        title = str(task["title"])[:90]
+        company = str(task["company"])[:75]
+        if stage == "INTERVIEW_SCHEDULED":
+            text = f"Собеседование: {title} · {company} · {date_text}"
+        else:
+            text = f"Следующее действие: {title} · {company} · {date_text}"
+        due.append({
+            "key": key, "job_id": task["job_id"],
+            "message": text[:240], "due_at": date_text,
+        })
+    due.sort(key=lambda item: (item["due_at"], item["key"]))
+    return due[:max(0, daily_remaining)]
+
+
+def load_notification_state():
+    if not NOTIFICATION_STATE_FILE.exists():
+        return {"events": {}, "daily_counts": {}}
+    try:
+        raw = json.loads(NOTIFICATION_STATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("not an object")
+        events = raw.get("events", {})
+        counts = raw.get("daily_counts", {})
+        if not isinstance(events, dict) or not isinstance(counts, dict):
+            raise ValueError("invalid notification journal")
+        # Keep only a bounded history; no credentials or message contents.
+        return {
+            "events": {
+                str(k): str(v) for k, v in list(events.items())[-1000:]
+                if isinstance(k, str) and isinstance(v, str)
+            },
+            "daily_counts": {
+                str(k): max(0, min(NOTIFICATION_DAILY_LIMIT, int(v)))
+                for k, v in counts.items()
+                if isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
+            },
+        }
+    except (OSError, ValueError, TypeError):
+        return {"events": {}, "daily_counts": {}}
+
+
+def save_notification_state(state):
+    NOTIFICATION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", delete=False,
+            prefix=".notification-", suffix=".tmp",
+            dir=str(NOTIFICATION_STATE_FILE.parent),
+        ) as fh:
+            temp_path = Path(fh.name)
+            json.dump(state, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(temp_path, NOTIFICATION_STATE_FILE)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+
+
+def post_macos_notification(message):
+    """Request a native macOS alert; never evaluate untrusted text as script.
+
+    Only a static AppleScript is evaluated; vacancy data is passed as argv,
+    so a title containing quotes or AppleScript syntax cannot execute code.
+    A successful spawn does not guarantee OS notification permission.
+    """
+    if sys.platform != "darwin":
+        return False
+    script = (
+        'on run argv\n'
+        '  display notification (item 1 of argv) with title "Job Agent"\n'
+        'end run'
+    )
+    # Strip control characters (including NUL), which cannot be passed as argv.
+    text = " ".join(str(message).replace("\x00", " ").split())[:240]
+    subprocess.Popen(
+        ["/usr/bin/osascript", "-e", script, "--", text],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, close_fds=True,
+    )
+    return True
+
+
 class QueueWriter(io.TextIOBase):
     def __init__(self, q):
         self.q = q
@@ -1049,6 +1175,10 @@ class JobAgentWindow(QMainWindow):
         self.available_update = None
         self.dashboard_all_records = []
         self.dashboard_records = []
+        self._notification_state = load_notification_state()
+        self._notification_delivery_failed = False
+        self._current_submitted_ids = set()
+        self._current_responses = {}
 
         self._build_ui()
         self._load_widgets()
@@ -1711,6 +1841,30 @@ class JobAgentWindow(QMainWindow):
 
         tabs.addTab(updates_tab, "Обновления")
 
+        notifications_tab = QWidget()
+        notifications_layout = QVBoxLayout(notifications_tab)
+        self.macos_notification_check = QCheckBox(
+            "Включить уведомления macOS о сроках и собеседованиях"
+        )
+        self.macos_notification_check.setToolTip(
+            "Только при открытом Job Agent. Не более 3 уведомлений в день, "
+            "без повторения для того же события."
+        )
+        notifications_layout.addWidget(self.macos_notification_check)
+        notifications_explainer = QLabel(
+            "Job Agent покажет напоминание в macOS, когда наступит срок "
+            "следующего действия, либо за час до назначенного собеседования. "
+            "Уведомления работают только пока приложение открыто. "
+            "Просроченные даты остаются во вкладке «Отклики», "
+            "но не вызывают старых системных уведомлений. "
+            "macOS может потребовать разрешить уведомления для osascript."
+        )
+        notifications_explainer.setWordWrap(True)
+        notifications_explainer.setTextFormat(Qt.PlainText)
+        notifications_layout.addWidget(notifications_explainer)
+        notifications_layout.addStretch()
+        tabs.addTab(notifications_tab, "Уведомления")
+
         for i in range(tabs.count()):
             page = tabs.widget(i)
             label = tabs.tabText(i)
@@ -2031,6 +2185,8 @@ class JobAgentWindow(QMainWindow):
                 item.setToolTip(value)
                 self.applications_table.setItem(row, col, item)
         self.applications_count.setText(f"Попыток отклика в истории: {len(application_records)}")
+        self._current_submitted_ids = submitted_ids
+        self._current_responses = responses
         self._refresh_followups(submitted_ids, responses)
         self._dashboard_selection_changed()
 
@@ -2557,6 +2713,9 @@ class JobAgentWindow(QMainWindow):
         self.auto_update_check.setChecked(
             bool(s.get("auto_check_updates", True))
         )
+        self.macos_notification_check.setChecked(
+            bool(s.get("macos_notifications", False))
+        )
 
     def _persist_update_channel(self, channel):
         channel = str(channel or "").strip().lower()
@@ -2600,6 +2759,7 @@ class JobAgentWindow(QMainWindow):
                 or DEFAULT_UPDATE_MANIFEST_URL
             ),
             "auto_check_updates": self.auto_update_check.isChecked(),
+            "macos_notifications": self.macos_notification_check.isChecked(),
         }
 
     def _validate_settings(self, s, require_application=None):
@@ -2934,9 +3094,60 @@ class JobAgentWindow(QMainWindow):
             details = "\n".join(info.get("details", []))
             label.setToolTip("Последний поиск: " + data.get("saved_at", "—") + ("\n" + details if details else ""))
 
+    def _check_native_notifications(self):
+        """Opt-in local notification checks; no background tasks when closed."""
+        if (
+            sys.platform != "darwin"
+            or not self.settings.get("macos_notifications", False)
+            or self._notification_delivery_failed
+        ):
+            return
+        now = datetime.now()
+        date_key = now.date().isoformat()
+        state = self._notification_state
+        events = state["events"]
+        counts = state["daily_counts"]
+        remaining = NOTIFICATION_DAILY_LIMIT - counts.get(date_key, 0)
+        if remaining <= 0:
+            return
+        choices = native_notification_candidates(
+            self.dashboard_all_records, self._current_submitted_ids,
+            self._current_responses, events,
+            now=now, daily_remaining=1,
+        )
+        if not choices:
+            return
+        choice = choices[0]
+        try:
+            if not post_macos_notification(choice["message"]):
+                return
+        except OSError as exc:
+            self._notification_delivery_failed = True
+            self._append_log(
+                "macOS notifications unavailable: "
+                + type(exc).__name__
+                + ". Reminders remain visible in Applications."
+            )
+            return
+
+        events[choice["key"]] = date_key
+        counts[date_key] = counts.get(date_key, 0) + 1
+        cutoff = (now - timedelta(days=90)).date().isoformat()
+        state["events"] = {k: v for k, v in events.items() if v >= cutoff}
+        state["daily_counts"] = {k: v for k, v in counts.items() if k >= cutoff}
+        try:
+            save_notification_state(state)
+        except OSError:
+            # Keep the in-memory dedupe for this app session, even if the
+            # local disk is temporarily unwritable.
+            self._append_log(
+                "Could not persist notification history; please check disk permissions."
+            )
+
     def _refresh_stats(self):
         self.processed_value.setText(str(processed_count()))
         self._refresh_dashboard()
+        self._check_native_notifications()
         self._refresh_source_status()
         if playwright_browser_present():
             self.browser_status_value.setText("Ready")
