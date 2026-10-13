@@ -926,8 +926,10 @@ def post_macos_notification(message):
         '  display notification (item 1 of argv) with title "Job Agent"\n'
         'end run'
     )
+    # Strip control characters (including NUL), which cannot be passed as argv.
+    text = " ".join(str(message).replace("\x00", " ").split())[:240]
     subprocess.Popen(
-        ["/usr/bin/osascript", "-e", script, "--", str(message)[:240]],
+        ["/usr/bin/osascript", "-e", script, "--", text],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, close_fds=True,
     )
