@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "3.0.4",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.4/job-agent-3.0.4-macos.zip",
-      "sha256": "1af80cf61d81b076d030f0e9554866fa62276dca03f1aca971054bc7ea701036",
-      "notes": "Job Agent 3.0.4 beta expands entry-level discovery to IT Support, Helpdesk, Service Desk, Application Support, Junior QA and Manual Tester while preserving existing Data/BI search. Settings > Search now offers an enabled-by-default Support/QA toggle, with discovery queries on Jobs.cz and the public Prace.cz Tester category. Support/QA titles use a separate conservative fit model centered on troubleshooting, support tickets, documentation, manual/regression testing and defect analysis rather than mandatory SQL/Power BI. Automatic preparation requires an explicit junior/trainee/L1 vacancy title, strong role description evidence, at least two relevant/familiar indicators, no hard 3+ years experience blocker, and no selected advanced mandatory technical requirements; other matching jobs remain for manual review. CV selection from 3.0.3 continues to choose the secondary Support/QA PDF for these roles, including L1 Support. No applicant expertise or certificates are invented; manual final Submit remains mandatory, confirmed submissions remain protected, and StartupJobs stays discovery-only. Offline regression CI passed 124 tests; macOS packaging and real discovery on user machine must still be verified.",
+      "version": "3.0.5",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.5/job-agent-3.0.5-macos.zip",
+      "sha256": "937e48401d7df2e34daedc69568169e429ccdc46685faf44de89c3ec62352cbc",
+      "notes": "Job Agent 3.0.5 beta fixes real-world shortlist quality after the user's 3.0.4 SEARCH_ONLY run found 179 vacancies but the final 36 was dominated by Support positions, with inflated scores for generic non-junior IT Support and incorrect Czech sales-support matches. Keep Data/BI as a core lane by reserving up to half the final shortlist for Data/BI, a third for IT Support and the remainder for QA, backfilling unused slots by relevance (never substituting SKIP over APPLY/REVIEW). Require at least one concrete diagnostic, ticket/network or QA testing signal before allowing a Junior/L1 Support/QA form preparation; generic IT/user-communication mentions alone stay REVIEW. Non-qualified Support/QA REVIEW scores are capped at 69 for clarity. Exclude Czech technical sales support and presales titles from IT helpdesk classification. Existing Search/Only mode, manual final Submit, separate Data and Support/QA CV selection, saved application history, Gmail read-only integration and macOS notifications are unchanged. Offline regression CI passed 130/130 tests; real search quality on the user's Mac must be rechecked after the update.",
       "min_version": "2.3.1"
     }
   }
