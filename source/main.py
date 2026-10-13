@@ -117,6 +117,8 @@ CV_PATH = os.getenv("CV_PATH", "").strip()
 CV_PATH_DATA = CV_PATH  # Immutable per-run primary CV, even after switching jobs
 ACTIVE_CV_GROUP = "data"
 CV_PATH_SUPPORT_QA = os.getenv("CV_PATH_SUPPORT_QA", "").strip()
+SEARCH_SUPPORT_QA = os.getenv("SEARCH_SUPPORT_QA", "true").lower() == "true"
+from support_qa_tracks import support_qa_track, support_qa_assessment
 BROWSER_PROFILE_DIR = os.getenv("BROWSER_PROFILE_DIR", "./browser_profile")
 SOURCE_JOBS_CZ = os.getenv("SOURCE_JOBS_CZ", "true").lower() == "true"
 SOURCE_PRACE_CZ = os.getenv("SOURCE_PRACE_CZ", "true").lower() == "true"
@@ -148,6 +150,11 @@ STARTUPJOBS_SEARCH_ROUTES = [
         "Data analytik",
         "/nabidky/data-analytik?lokalita=Praha%3AChIJi3lwCZyTC0cRkEAWZg-vAAQ%3A20km",
     ),
+]
+
+# Verified public Prace.cz /nabidky/tester/ listing.
+SUPPORT_QA_PRACE_SEARCH_ROUTES = [
+    ("Tester", "/nabidky/tester/"),
 ]
 
 PRACE_SEARCH_ROUTES = [
@@ -193,6 +200,13 @@ SEARCH_QUERIES = [
     "CRM Data Analyst",
     "Data Operations Analyst",
     "Junior Reporting Specialist",
+]
+
+SUPPORT_QA_SEARCH_QUERIES = [
+    "Junior IT Support", "IT Support", "IT podpora",
+    "Helpdesk", "Service Desk Analyst", "Application Support",
+    "Technická podpora", "Junior QA Tester", "Manual Tester",
+    "Software Tester", "Junior QA", "Test Analyst",
 ]
 
 CANDIDATE = {
@@ -741,8 +755,11 @@ def discovery_priority(job):
     ):
         score += 45
 
+    if SEARCH_SUPPORT_QA and support_qa_track(title):
+        score += 15
+
     if re.search(
-        r"power\s*bi|reporting|business\s*intelligence|sql|"
+        r"power\s*bi|reporting|business\s*intelligence|sql|
         r"data\s+analytics|datov|data\s+quality|master\s+data|"
         r"data\s+governance|dashboard",
         text,
@@ -873,6 +890,8 @@ def role_class(title):
     low = clean(title).lower()
     if title_excluded(title):
         return "excluded"
+    if SEARCH_SUPPORT_QA and support_qa_track(title):
+        return "target"
     if any(re.search(p, low, re.I) for p in TARGET_TITLE_PATTERNS):
         return "target"
     if any(re.search(p, low, re.I) for p in EXPANDED_TITLE_PATTERNS):
@@ -1490,6 +1509,12 @@ def score_job(job):
             "confidence": "high", "evidence_verified": evidence_verified,
             "reasons": ["excluded seniority"],
         }
+
+    if SEARCH_SUPPORT_QA and support_qa_track(title):
+        # Separate from Data/BI scoring. Do not pretend Excel, SQL or Power BI
+        # are mandatory for a service desk / manual QA opening.
+        hard_experience = bool(experience_penalties(text))
+        return support_qa_assessment(job, hard_experience=hard_experience)
 
     role_fit = (
         40 if rc == "target"
@@ -2267,7 +2292,8 @@ def discover_jobs_cz(session):
 
     jobs, seen = [], set()
 
-    for query in SEARCH_QUERIES:
+    queries = SEARCH_QUERIES + (SUPPORT_QA_SEARCH_QUERIES if SEARCH_SUPPORT_QA else [])
+    for query in queries:
         url = f"{BASE}/prace/praha/?q%5B%5D={quote(query)}"
         try:
             r = session.get(
@@ -2299,7 +2325,10 @@ def discover_prace_cz(session):
 
     jobs, seen = [], set()
 
-    for query, route in PRACE_SEARCH_ROUTES:
+    routes = PRACE_SEARCH_ROUTES + (
+        SUPPORT_QA_PRACE_SEARCH_ROUTES if SEARCH_SUPPORT_QA else []
+    )
+    for query, route in routes:
         url = urljoin(PRACE_BASE, route)
 
         try:
@@ -7742,8 +7771,9 @@ def current_agent_version():
 
 
 async def main():
-    print(f"🚀 Starting Job Agent v{current_agent_version()} — three-source data-role discovery")
+    print(f"🚀 Starting Job Agent v{current_agent_version()} — Data/BI and IT Support/QA discovery")
     print(f"🔍 SEARCH_ONLY: {SEARCH_ONLY}")
+    print(f"🧰 IT Support / QA discovery enabled: {SEARCH_SUPPORT_QA}")
     print(f"📄 Primary Data/BI CV: {Path(CV_PATH_DATA).name or '(missing)'}")
     print(f"📄 IT Support/QA CV: {Path(CV_PATH_SUPPORT_QA).name if CV_PATH_SUPPORT_QA else '(not configured)'}")
     print(f"📨 AUTO_SUBMIT: {AUTO_SUBMIT}")
