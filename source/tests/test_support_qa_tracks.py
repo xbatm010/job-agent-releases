@@ -256,6 +256,100 @@ class SupportQaTrackTests(unittest.TestCase):
             ["data", "support", "support"],
         )
 
+    def test_pre_enrichment_slots_prioritize_data_before_support_saturation(self):
+        # Real 3.0.6 diagnosis: 53 discovered Data, 38 Support, 8 QA,
+        # yet only 22 Data reached enrichment while 37 Support did.
+        data = [
+            {"title": "Data Analyst", "source": "jobs.cz",
+             "job_id": str(2000000 + i), "location": "Praha"}
+            for i in range(53)
+        ]
+        support = [
+            {"title": "IT Support Specialist", "source": "jobs.cz",
+             "job_id": str(2100000 + i), "location": "Praha"}
+            for i in range(38)
+        ]
+        qa = [
+            {"title": "QA Tester", "source": "prace.cz",
+             "job_id": str(2200000 + i), "location": "Praha"}
+            for i in range(8)
+        ]
+        unrelated = [
+            {"title": "Office Coordinator", "source": "prace.cz",
+             "job_id": str(2300000 + i), "location": "Praha"}
+            for i in range(81)
+        ]
+        jobs = support + unrelated + data + qa
+        selected = main.select_discovery_candidates(jobs, set(), set(), 108)
+        counts = main.search_track_counts(selected)
+        self.assertEqual(len(selected), 108)
+        self.assertEqual(len(set(j["job_id"] for j in selected)), 108)
+        self.assertEqual(counts["data"], 53)
+        self.assertEqual(counts["support"], 38)
+        self.assertEqual(counts["qa"], 8)
+        self.assertEqual(counts["other"], 9)
+        self.assertEqual(len(jobs), 180)
+
+    def test_balanced_browser_slots_do_not_expand_budget(self):
+        # The previous log's 12 browser slots were entirely consumed by
+        # Support/Automation; retain the twelve-request cap, share across tracks.
+        rows = [
+            {"title": "L1 IT Support", "job_id": f"support-{i}"}
+            for i in range(30)
+        ] + [
+            {"title": "Data Analyst", "job_id": f"data-{i}"}
+            for i in range(20)
+        ] + [
+            {"title": "Junior QA Tester", "job_id": f"qa-{i}"}
+            for i in range(10)
+        ]
+        chosen = main.balanced_discovery_slots(rows, 12)
+        self.assertEqual(len(chosen), 12)
+        self.assertEqual(main.search_track_counts(chosen), {
+            "data": 6, "support": 4, "qa": 2, "other": 0
+        })
+        self.assertEqual(len({j["job_id"] for j in chosen}), 12)
+        # Respect the original ranking within each track.
+        self.assertEqual([j["job_id"] for j in chosen if j["title"] == "Data Analyst"],
+                         [f"data-{i}" for i in range(6)])
+
+    def test_browser_quotas_backfill_when_qa_missing(self):
+        rows = [
+            {"title": "IT Support", "job_id": f"s-{i}"}
+            for i in range(20)
+        ] + [
+            {"title": "Data Analyst", "job_id": f"d-{i}"}
+            for i in range(20)
+        ]
+        chosen = main.balanced_discovery_slots(rows, 12)
+        counts = main.search_track_counts(chosen)
+        self.assertEqual(len(chosen), 12)
+        self.assertGreaterEqual(counts["data"], 6)
+        self.assertGreaterEqual(counts["support"], 4)
+        self.assertEqual(counts["qa"], 0)
+
+    def test_no_extra_work_when_track_search_disabled_or_limit_tiny(self):
+        rows = [
+            {"title": "IT Support", "job_id": "a"},
+            {"title": "Data Analyst", "job_id": "b"},
+            {"title": "Junior QA Tester", "job_id": "c"},
+        ] * 12
+        with patch.object(main, "SEARCH_SUPPORT_QA", False):
+            self.assertEqual(main.balanced_discovery_slots(rows, 12), rows[:12])
+        self.assertEqual(main.balanced_discovery_slots(rows, 2), rows[:2])
+
+    def test_balanced_discovery_still_excludes_processed_handoffs_and_seniors(self):
+        rows = [
+            {"title": "Junior Data Analyst", "job_id": "2000444401", "source": "jobs.cz"},
+            {"title": "Senior IT Support", "job_id": "2000444402", "source": "jobs.cz"},
+            {"title": "IT Support Specialist", "job_id": "2000444403", "source": "jobs.cz"},
+            {"title": "Junior QA Tester", "job_id": "2000444404", "source": "jobs.cz"},
+        ]
+        chosen = main.select_discovery_candidates(
+            rows, {"job:2000444401"}, {"job:2000444403"}, 36
+        )
+        self.assertEqual([x["job_id"] for x in chosen], ["2000444404"])
+
     def test_search_prioritization_includes_qa_support(self):
         job = vacancy("Junior QA Tester", QA_DESCRIPTION)
         self.assertGreater(main.discovery_priority(job), main.discovery_priority(vacancy("Accountant", "Accounts payable.")))
