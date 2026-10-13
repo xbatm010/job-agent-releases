@@ -78,6 +78,49 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(desktop.RESPONSE_FILE.exists())
         self.assertFalse(desktop.HISTORY_FILE.exists())
 
+    def test_gmail_preview_shows_job_title_and_snippet_as_plain_text(self):
+        row = {
+            "subject": "Výsledek výběrového řízení",
+            "sender": "HR Team",
+            "job_id": "job:2000000002",
+            "job_title": "Submitted analyst",
+            "job_company": "Example",
+            "category": "RESULT",
+            "category_label": "Результат отбора — проверь письмо",
+            "reason": "Компания и название",
+            "thread_id": "abcdef012345",
+            "snippet": "Please read the full email.",
+        }
+        inspected = []
+        def check(dialog):
+            table = dialog.findChild(desktop.QTableWidget)
+            preview = dialog.findChild(desktop.QTextEdit, "gmail_message_preview")
+            self.assertEqual(table.columnCount(), 3)
+            self.assertIn("Submitted analyst", table.item(0, 1).text())
+            self.assertIn("Example", table.item(0, 1).text())
+            self.assertIn("Результат", table.item(0, 2).text())
+            self.assertIn("Please read the full email.", preview.toPlainText())
+            inspected.append(True)
+            return desktop.QDialog.Rejected
+        with patch.object(desktop.QDialog, "exec", check):
+            self.window._show_gmail_candidates([row])
+        self.assertEqual(inspected, [True])
+        self.assertFalse(desktop.RESPONSE_FILE.exists())
+
+    def test_gmail_stage_editor_requires_confirmed_submitted_job(self):
+        with patch.object(self.window, "_edit_response_tracking") as editor, \
+             patch.object(desktop.QMessageBox, "information"):
+            self.window._open_gmail_stage_editor("job:2000000001")
+            editor.assert_not_called()
+            self.window._open_gmail_stage_editor("job:2000000002")
+            editor.assert_called_once()
+            self.assertEqual(
+                desktop.canonical_local_job_id(
+                    self.window._selected_dashboard_record()["job_id"]
+                ), "job:2000000002",
+            )
+        self.assertFalse(desktop.RESPONSE_FILE.exists())
+
     def test_macos_notifications_default_off_and_settings_round_trip(self):
         self.assertFalse(self.window.macos_notification_check.isChecked())
         self.assertFalse(self.window._collect_settings()["macos_notifications"])
