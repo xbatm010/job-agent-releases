@@ -878,6 +878,23 @@ def role_class(title):
         return "adjacent"
     return "other"
 
+def is_employer_award_badge(name):
+    """Award/seal slogans are not hiring organisations.
+
+    Use a whole-phrase match rather than substring matching so real companies
+    like "Top Employer Solutions s.r.o." are never suppressed.
+    """
+    normalized = normalize_key_text(name)
+    return bool(re.fullmatch(
+        r"(?:certified\s+)?(?:top\s+employers?|best\s+employers?"
+        r"|great\s+place\s+to\s+work|zamestnavatel\s+roku"
+        r"|nejlepsi\s+zamestnavatel)"
+        r"(?:\s+(?:20\d{2}|cz|eu|czech|republic|ceska|republika"
+        r"|europe|evropa|global|certified|certification|award|badge))*",
+        normalized,
+    ))
+
+
 def valid_company(name, source="generic"):
     if not name:
         return False
@@ -907,6 +924,11 @@ def valid_company(name, source="generic"):
     if normalize_key_text(name) in {
         normalize_key_text(label) for label in navigation_labels
     }:
+        return False
+
+    # Logos and employer containers can include award seals such as
+    # "Top Employer 2026" instead of the actual hiring organisation.
+    if is_employer_award_badge(name):
         return False
 
     # SEO title fragments describing a role are not employer names.
