@@ -2380,6 +2380,42 @@ def pre_enrichment_relevance_tier(job):
     return 1
 
 
+def balanced_discovery_slots(ordered, limit):
+    """Reserve bounded work across Data/BI, IT Support and QA before scoring.
+
+    The order must already reflect the caller's relevance/source priorities.
+    Allocate Data half, Support one third, and QA one sixth of available slots,
+    then backfill any shortage from the original global order. This does not
+    invent additional vacancies, relax filters or change any APPLY decision.
+    Neither type of scarce work (HTTP enrichment or browser recovery) grows.
+    """
+    limit = max(0, int(limit))
+    if not SEARCH_SUPPORT_QA or limit < 6 or len(ordered) <= limit:
+        return ordered[:limit]
+
+    budgets = {
+        "data": (limit + 1) // 2,
+        "support": limit // 3,
+        "qa": limit - ((limit + 1) // 2) - (limit // 3),
+    }
+    selected = set()
+    counts = {group: 0 for group in budgets}
+    for index, job in enumerate(ordered):
+        group = job_search_track(job)
+        if group in budgets and counts[group] < budgets[group]:
+            selected.add(index)
+            counts[group] += 1
+    # Backfill any absent category (especially QA) with the next most
+    # relevant unselected job, regardless of source or track.
+    for index, _ in enumerate(ordered):
+        if len(selected) >= limit:
+            break
+        selected.add(index)
+    # Preserve original tier, source and browser-priority relative order
+    # after selection so an allocation does not re-rank the rest.
+    return [job for index, job in enumerate(ordered) if index in selected]
+
+
 def select_discovery_candidates(jobs, processed, inactive_ids, limit):
     """Prioritize entry-level data roles without exhausting one site's quota.
 
@@ -2398,15 +2434,13 @@ def select_discovery_candidates(jobs, processed, inactive_ids, limit):
         source = str(job.get("source", "unknown"))
         tiers.setdefault(tier, {}).setdefault(source, []).append(job)
 
-    chosen = []
+    ordered = []
     for tier in sorted(tiers, reverse=True):
         source_groups = list(tiers[tier].values())
         for group in source_groups:
             group.sort(key=discovery_priority, reverse=True)
-        chosen.extend(interleave_sources(*source_groups))
-        if len(chosen) >= limit:
-            break
-    return chosen[:max(0, limit)]
+        ordered.extend(interleave_sources(*source_groups))
+    return balanced_discovery_slots(ordered, limit)
 
 
 def job_search_track(job):
@@ -3152,7 +3186,9 @@ async def browser_recover_weak_evidence(jobs):
         seen_evidence.add(key)
         unique_candidates.append(job)
 
-    candidates = unique_candidates[:MAX_BROWSER_EVIDENCE_JOBS]
+    candidates = balanced_discovery_slots(
+        unique_candidates, MAX_BROWSER_EVIDENCE_JOBS
+    )
 
     if not candidates:
         print("🧠 Browser evidence pass: 0 candidate(s)")
@@ -3162,6 +3198,7 @@ async def browser_recover_weak_evidence(jobs):
         f"🧠 Browser evidence pass: {len(candidates)} candidate(s) "
         f"(read-only JavaScript render)"
     )
+    show_track_counts("Browser evidence selected", candidates)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
