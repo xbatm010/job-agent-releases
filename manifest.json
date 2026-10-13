@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "3.0.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.0/job-agent-3.0.0-macos.zip",
-      "sha256": "47bd4ef5aa6c47b0aed6c62a0e014680901d8a0c8606d179c1088ec1f854a08f",
-      "notes": "Job Agent v3.0.0 beta introduces opt-in macOS Notification Center reminders for user-entered interview and employer follow-up deadlines. Enable under Settings > Уведомления (off by default). Job Agent checks the existing local employer response tracker only while the app is open. Date-only actions alert during daytime on the due day; exact-time tasks alert on/near deadline, and interviews can alert in the preceding hour. Old overdue tasks remain visible in Applications without generating stale popup spam. A durable local notification journal deduplicates same job/stage/date across refreshes and restarts and limits macOS notifications to three per local day. Native notifications are requested by static AppleScript via osascript argv, with untrusted titles sanitized; no shell interpolation, no AppleScript from vacancy text. Existing applications.csv and employer_responses.json are not mutated by notification delivery, and scoring, human-only final Submit, and no-CAPTCHA behavior are unchanged. No background service or Gmail access is added; real banner display depends on macOS notification permissions. Offline GitHub Actions regression suite: 88/88 passed, including four new tests for preferences, timing, dedup, daily cap and safe arguments.",
+      "version": "3.0.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.0.1/job-agent-3.0.1-macos.zip",
+      "sha256": "eb0136f655b878585cda89fa368ca3a799d0d7c03bc2248c482d9e4d03ef86b1",
+      "notes": "Job Agent v3.0.1 beta adds optional Gmail review for replies to already-confirmed applications. Settings > Gmail allows manual Google Desktop OAuth authorization for the gmail.readonly scope; you must supply your own Google Cloud Desktop OAuth JSON (not bundled with the app). Access/refresh tokens are stored in the local macOS Keychain. Applications > Проверить ответы в Gmail initiates a read-only search on demand (up to 40 recent messages from the last 90 days; headers and short snippets only). Suggestions are matched to saved submitted vacancies using unambiguous posting IDs or company and role terms; ambiguous messages are ignored. Review suggestions in a modal, open the original Gmail thread, and record recruiter stage manually. No automatic email sending, status edits, background scans, application submissions, or CV upload to Google. Settings and existing submission history remain compatible. PR #21 GitHub offline regression CI passed all 97 tests; native macOS packaging and real Google authorization require separate verification.",
       "min_version": "2.3.1"
     }
   }
