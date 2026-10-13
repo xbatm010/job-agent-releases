@@ -2409,6 +2409,38 @@ def select_discovery_candidates(jobs, processed, inactive_ids, limit):
     return chosen[:max(0, limit)]
 
 
+def job_search_track(job):
+    """Report the scoring family rather than guessing from irrelevant text."""
+    category = str(job.get("role_track") or "")
+    if category in {"support", "qa"}:
+        return category
+    title = job.get("actual_title") or job.get("title") or ""
+    if SEARCH_SUPPORT_QA:
+        category = support_qa_track(title)
+        if category:
+            return category
+    return "data" if role_class(title) in {"target", "expanded", "adjacent"} else "other"
+
+
+def search_track_counts(jobs, decisions=None):
+    """Read-only diagnostic breakdown; never logs candidate emails or CV paths."""
+    result = {"data": 0, "support": 0, "qa": 0, "other": 0}
+    for job in jobs:
+        if decisions and str(job.get("decision") or "").upper() not in decisions:
+            continue
+        result[job_search_track(job)] += 1
+    return result
+
+
+def show_track_counts(stage, jobs, decisions=None):
+    counts = search_track_counts(jobs, decisions)
+    print(
+        f"📊 {stage}: Data/BI={counts['data']} | "
+        f"Support={counts['support']} | QA={counts['qa']} | "
+        f"Other={counts['other']}"
+    )
+
+
 def safe_manual_review_candidates(ranked, limit=3):
     """Present good REVIEW jobs without bypassing any automatic APPLY guard.
 
@@ -2428,7 +2460,36 @@ def safe_manual_review_candidates(ranked, limit=3):
         and not bool(job.get("hard_experience"))
         and str(job.get("location_gate", "")).lower() in allowed_locations
     ]
-    return sorted(candidates, key=lambda job: -int(job.get("score") or 0))[:max(0, limit)]
+    ordered = sorted(candidates, key=lambda job: (
+        -int(job.get("score") or 0),
+        -int(job.get("candidate_fit") or 0),
+    ))
+    limit = max(0, int(limit))
+    if not SEARCH_SUPPORT_QA or limit < 2:
+        return ordered[:limit]
+
+    # When an APPLY candidate is absent, do not suggest three tied Support
+    # vacancies while hiding valid manual Data and QA options.
+    tracks = {job_search_track(job) for job in ordered}
+    if len(tracks) < 2:
+        return ordered[:limit]
+    selected = []
+    used = set()
+    for track in ("data", "qa", "support"):
+        for job in ordered:
+            if job_search_track(job) == track and id(job) not in used:
+                selected.append(job)
+                used.add(id(job))
+                break
+        if len(selected) >= limit:
+            break
+    for job in ordered:
+        if len(selected) >= limit:
+            break
+        if id(job) not in used:
+            selected.append(job)
+            used.add(id(job))
+    return selected[:limit]
 
 
 def print_manual_review_suggestions(ranked, limit=3):
@@ -2490,13 +2551,6 @@ def select_review_shortlist(ranked, limit):
     if not SEARCH_SUPPORT_QA:
         return ordered[:limit]
 
-    def track(job):
-        title = job.get("actual_title") or job.get("title") or ""
-        kind = str(job.get("role_track") or "")
-        if kind not in {"support", "qa"}:
-            kind = support_qa_track(title) or "data"
-        return kind
-
     data_slots = (limit + 1) // 2
     qa_slots = limit // 6
     support_slots = limit - data_slots - qa_slots
@@ -2505,9 +2559,9 @@ def select_review_shortlist(ranked, limit):
     picked = set()
     for group, allowance in budgets.items():
         for job in ordered:
-            if len([x for x in selected if track(x) == group]) >= allowance:
+            if len([x for x in selected if job_search_track(x) == group]) >= allowance:
                 break
-            if track(job) != group or str(job.get("decision", "")).upper() == "SKIP":
+            if job_search_track(job) != group or str(job.get("decision", "")).upper() == "SKIP":
                 continue
             if id(job) in picked:
                 continue
@@ -7903,6 +7957,7 @@ async def main():
     session = requests.Session()
     jobs = await discover_all(session)
     print(f"🔗 Combined discovery before enrichment/dedup: {len(jobs)} candidate(s)")
+    show_track_counts("Discovered", jobs)
 
     print("\n🔍 DISCOVERY PRIORITY PREVIEW")
     for i, job in enumerate(jobs[:14], 1):
@@ -7927,6 +7982,7 @@ async def main():
         f"🎯 Relevance-first enrichment: {len(fresh)} candidate(s) "
         f"selected from {len(jobs)} discovered"
     )
+    show_track_counts("Selected for enrichment", fresh)
 
     enriched = []
     for job in fresh:
@@ -8024,7 +8080,11 @@ async def main():
         ranked.append(job)
 
     scored_count = len(ranked)
+    show_track_counts("Scored (all decisions)", ranked)
+    show_track_counts("Scored eligible (APPLY/REVIEW)", ranked, {"APPLY", "REVIEW"})
     ranked = select_review_shortlist(ranked, MAX_JOBS_TO_REVIEW)
+    show_track_counts("Final shortlist", ranked)
+    show_track_counts("Final ready (APPLY)", ranked, {"APPLY"})
     print(
         f"🎯 Post-evidence shortlist: {len(ranked)} of {scored_count} "
         "scored candidates retained"
