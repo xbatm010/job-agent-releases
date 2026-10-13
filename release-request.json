@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 42,
   "version": "2.9.14",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent v2.9.14 beta corrects false employer detection introduced by the new Jobs.cz logo extraction in v2.9.13: the Master Data Specialist vacancy was incorrectly attributed to 'Domů' (the Czech home-navigation label). Employer validation now rejects exact navigation/control labels such as 'Domů', 'Úvod', 'Home', 'Zpět', 'Menu' and 'Přihlásit se' across structured HTML, metadata, logo and browser extraction, without rejecting real employer names containing those words (e.g. Home Credit a.s.). Static HTML logo extraction skips header and navigation images; Chromium fallback restricts generic logo-source matching to main-content regions. Preserves real improved names including Skupina ČEZ, Alza.cz, Seznam.cz, TE Connectivity and ČEPS. All 76 offline regression tests passed in GitHub Actions (including three new Domů/logo tests); scoring, application flow and final manual Submit protections are unchanged.",
-  "last_published": "2.9.13",
-  "last_sha256": "986e7712d2bc58d7acaad0061eb325254da7d34beaa197afa9ca150f07e6d6e3"
+  "last_published": "2.9.14",
+  "last_sha256": "126421647253a9a75babbbd956525fec57a0303b1d65c44b0f515e91e0e58bda"
 }
