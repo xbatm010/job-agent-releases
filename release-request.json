@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 45,
   "version": "2.9.17",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent v2.9.17 beta adds in-app application response analytics and manual follow-up reminders on top of the already tested v2.9.16 employer response tracker. The Applications tab now counts distinct confirmed submissions, user-recorded recruiter replies, current scheduled/completed interviews, rejections, and offers; applications are deduplicated by canonical Jobs.cz/Prace.cz IDs. The local next_date in employer_responses.json drives an upcoming-action list for overdue/due reminders and next seven days, with optional future-dated tasks. Date-only reminders become due on the specified day, and timestamp reminders become due only at the entered local time. Double-click or use the button to open the corresponding vacancy on Dashboard without contacting the employer or reopening an application. Closed rejections and withdrawals are excluded from action lists; old records with no response data still work. Reminders are visible only while the app is open: no background notifications, no Gmail reads and no automatic follow-up emails. Existing scoring, submit authorization and history are unchanged. GitHub Actions CI: 84/84 offline Qt and regression tests passed.",
-  "last_published": "2.9.16",
-  "last_sha256": "8d8a20e02d5181f0dfe1633065f585c93897b17300599544084c55cfb4ef71b8"
+  "last_published": "2.9.17",
+  "last_sha256": "279ab945213dc3bc59c7fa269198109c5e492cdb17c4bf66934ccc588bc2c0ad"
 }
