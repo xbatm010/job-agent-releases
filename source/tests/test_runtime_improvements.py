@@ -186,6 +186,95 @@ class RuntimeImprovements(ScoringDefaults, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(jobs[0]["company"], "Skupina ČEZ")
         self.assertEqual(jobs[0]["company_source"], "search_card")
 
+    async def test_award_badges_never_become_employer_names(self):
+        badges = [
+            "Top Employer 2026", "Top Employers 2025",
+            "Certified Top Employer 2026", "Top Employer 2026 Czech Republic",
+            "Great Place to Work 2026", "Best Employer 2025",
+            "Zaměstnavatel roku 2026", "Nejlepší zaměstnavatel 2026",
+        ]
+        for label in badges:
+            with self.subTest(badge=label):
+                self.assertTrue(main.is_employer_award_badge(label))
+                for source in ("structured", "search_card", "meta", "employer_link"):
+                    self.assertFalse(main.valid_company(label, source))
+                self.assertEqual(main.normalized_employer_logo_label(label), "")
+                self.assertEqual(
+                    main.normalized_employer_logo_label("Logo společnosti " + label),
+                    "",
+                )
+        for employer in (
+            "Skupina ČEZ", "TE Connectivity", "Alza.cz a.s.",
+            "Home Credit a.s.", "Top Employer Solutions s.r.o.",
+            "Top Employers Institute",
+        ):
+            with self.subTest(employer=employer):
+                self.assertFalse(main.is_employer_award_badge(employer))
+                self.assertTrue(main.valid_company(employer, "search_card"))
+
+    async def test_badge_logo_is_skipped_before_real_company_in_search_cards(self):
+        html = """
+        <article>
+          <h2><a href="/rpd/2001457607/">Master Data Specialist</a></h2>
+          <div class="company-logos">
+            <img src="/logos/top-employer-award.svg" alt="Top Employer 2026">
+            <img src="/logos/company.svg" alt="Skupina ČEZ">
+          </div>
+        </article>
+        """
+        jobs = main.parse_search(html, "data")
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["company"], "Skupina ČEZ")
+        only_badge = main.BeautifulSoup("""
+          <article><h2><a href="/rpd/2001457607/">Master Data Specialist</a></h2>
+          <img src="/logos/top-employer.svg" alt="Top Employer 2026">
+          </article>
+        """, "html.parser")
+        self.assertEqual(
+            main.extract_company_from_search_card(only_badge.article, "Master Data Specialist"),
+            "",
+        )
+        self.assertEqual(main.extract_company(main.BeautifulSoup(
+            '<div class="company-logo">'
+            '<img src="/awards/logo.png" alt="Top Employer 2026"></div>',
+            "html.parser",
+        )), "")
+
+    async def test_browser_employer_logo_skips_badge_and_reads_real_logo(self):
+        class Logo:
+            def __init__(self, value):
+                self.value = value
+
+            async def is_visible(self):
+                return True
+
+            async def get_attribute(self, name):
+                return self.value if name == "alt" else None
+
+        class Locator:
+            def __init__(self, selector):
+                self.selector = selector
+                self.first = self
+
+            async def count(self):
+                return 2 if "img[alt]," in self.selector else 0
+
+            def nth(self, i):
+                return Logo(("Top Employer 2026", "Logo společnosti Skupina ČEZ")[i])
+
+            async def inner_text(self):
+                return ""
+
+        page = SimpleNamespace(
+            url="https://www.jobs.cz/rpd/2001457607/",
+            evaluate=AsyncMock(return_value=""),
+            locator=lambda sel: Locator(sel),
+            title=AsyncMock(return_value=""),
+        )
+        with patch.object(main, "page_contexts", AsyncMock(return_value=[page])):
+            company, source = await main.extract_company_from_page(page)
+        self.assertEqual((company, source), ("Skupina ČEZ", "browser_employer_logo"))
+
     async def test_navigation_domů_is_not_an_employer_but_real_brands_survive(self):
         for label in [
             "Domů", "Domu", "Home", "Úvod", "Hlavní stránka",
