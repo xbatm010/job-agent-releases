@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 44,
-  "version": "2.9.16",
+  "publish": true,
+  "request_id": 45,
+  "version": "2.9.17",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent v2.9.16 beta introduces a human-controlled employer response tracker for submitted applications. In the Dashboard, confirmed submitted vacancies now expose 'Отметить ответ работодателя…' where the user can separately record awaiting reply, recruiter contacted, interview scheduled, interview completed, rejection, offer or withdrawal, with notes and an optional next date/time. A new 'Ответы работодателей' filter surfaces recorded replies, and the vacancy detail/row displays their stage. All recruitment progress is manual, stored atomically in ~/.job_agent/employer_responses.json independently from historical applications.csv and all application statuses; it never sends email or changes employer final-submit safeguards. The previous v2.9.15 run verified the Master Data Specialist false employer badge issue was fixed ('company not detected' rather than 'Domů' or 'Top Employer 2026'); 173 discovered, 104 scored, 10 REVIEW, 0 APPLY, 42 previously processed, 1 pending manual Sanofi Jobs.cz handoff. No background email access or auto-replies. GitHub Actions 81/81 offline tests passed including UI and persistence safety regressions.",
+  "notes": "Job Agent v2.9.17 beta adds in-app application response analytics and manual follow-up reminders on top of the already tested v2.9.16 employer response tracker. The Applications tab now counts distinct confirmed submissions, user-recorded recruiter replies, current scheduled/completed interviews, rejections, and offers; applications are deduplicated by canonical Jobs.cz/Prace.cz IDs. The local next_date in employer_responses.json drives an upcoming-action list for overdue/due reminders and next seven days, with optional future-dated tasks. Date-only reminders become due on the specified day, and timestamp reminders become due only at the entered local time. Double-click or use the button to open the corresponding vacancy on Dashboard without contacting the employer or reopening an application. Closed rejections and withdrawals are excluded from action lists; old records with no response data still work. Reminders are visible only while the app is open: no background notifications, no Gmail reads and no automatic follow-up emails. Existing scoring, submit authorization and history are unchanged. GitHub Actions CI: 84/84 offline Qt and regression tests passed.",
   "last_published": "2.9.16",
   "last_sha256": "8d8a20e02d5181f0dfe1633065f585c93897b17300599544084c55cfb4ef71b8"
 }
