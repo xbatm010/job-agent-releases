@@ -4,5 +4,8 @@ python-dotenv>=1.1.0
 playwright>=1.52.0
 PySide6>=6.8.0
 pyinstaller>=6.11.0
+google-api-python-client>=2.150.0
+google-auth-oauthlib>=1.2.0
+keyring>=25.0
 
 certifi>=2025.8.3
