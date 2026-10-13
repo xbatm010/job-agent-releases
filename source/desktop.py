@@ -21,6 +21,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QDialogButtonBox,
     QMenu,
     QScrollArea,
     QSizePolicy,
@@ -124,6 +125,19 @@ DEFAULT_PROFILE_DIR = APP_DIR / "browser_profile"
 HISTORY_FILE = Path.home() / ".job_agent" / "applications.csv"
 VACANCIES_FILE = Path.home() / ".job_agent" / "vacancies.jsonl"
 OVERRIDES_FILE = Path.home() / ".job_agent" / "job_overrides.json"
+RESPONSE_FILE = Path.home() / ".job_agent" / "employer_responses.json"
+
+# Separate from application submission status: these stages are manually entered.
+RESPONSE_STAGES = {
+    "WAITING": "Ожидаем ответ",
+    "CONTACTED": "Рекрутер связался",
+    "INTERVIEW_SCHEDULED": "Собеседование назначено",
+    "INTERVIEW_COMPLETED": "Собеседование пройдено",
+    "REJECTED": "Отказ",
+    "OFFER": "Предложение о работе",
+    "WITHDRAWN": "Отклик отозван",
+}
+
 
 
 def resource_path(name: str) -> Path:
@@ -612,6 +626,89 @@ def delete_job_override(job_id: str) -> bool:
     return True
 
 
+def valid_followup_date(value: str) -> bool:
+    """Accept an ISO date or a local interview datetime, without time-zone guessing."""
+    if not value:
+        return True
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M"):
+        try:
+            datetime.strptime(value, fmt)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def load_response_tracking() -> dict:
+    """Read a user-managed, independent employer-response timeline.
+
+    Do not infer recruiter decisions from URLs or technical submit statuses.
+    Invalid and older JSON entries cannot override application history.
+    """
+    if not RESPONSE_FILE.exists():
+        return {}
+    try:
+        raw = json.loads(RESPONSE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for key, value in raw.items():
+        jid = canonical_local_job_id(key)
+        if not jid or not isinstance(value, dict):
+            continue
+        stage = value.get("stage", "")
+        if stage not in RESPONSE_STAGES:
+            continue
+        date = str(value.get("next_date", "")).strip()
+        out[jid] = {
+            "stage": stage,
+            "notes": str(value.get("notes", ""))[:5000],
+            "next_date": date if valid_followup_date(date) else "",
+            "updated_at": str(value.get("updated_at", "")),
+        }
+    return out
+
+
+def save_response_tracking(job_id, stage, notes="", next_date="") -> dict:
+    """Atomically save manually confirmed stages, never touch applications.csv."""
+    jid = canonical_local_job_id(job_id)
+    if not jid:
+        raise ValueError("Vacancy ID is missing.")
+    if stage not in RESPONSE_STAGES:
+        raise ValueError("Unknown employer-response stage.")
+    notes = str(notes or "").strip()
+    next_date = str(next_date or "").strip()
+    if len(notes) > 5000:
+        raise ValueError("Notes cannot exceed 5000 characters.")
+    if not valid_followup_date(next_date):
+        raise ValueError("Date must be YYYY-MM-DD or YYYY-MM-DD HH:MM.")
+    data = load_response_tracking()
+    entry = {
+        "stage": stage,
+        "notes": notes,
+        "next_date": next_date,
+        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    data[jid] = entry
+    RESPONSE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=str(RESPONSE_FILE.parent),
+            prefix=".responses-", suffix=".tmp", delete=False,
+        ) as fh:
+            temporary = Path(fh.name)
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(temporary, RESPONSE_FILE)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    return entry
+
+
 class QueueWriter(io.TextIOBase):
     def __init__(self, q):
         self.q = q
@@ -1069,7 +1166,7 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_search.addAction(ui_icon("search", "#69758d", 20), QLineEdit.LeadingPosition)
         self.dashboard_search.setClearButtonEnabled(True)
         self.dashboard_decision_filter = QComboBox(self)
-        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Неактивные", "INACTIVE"), ("Отправлены", "SUBMITTED"), ("Требуют внимания", "ATTENTION"), ("Можно в очередь", "Manual queue eligible")]:
+        for label, value in [("Все вакансии", "All"), ("Подходят", "APPLY"), ("Проверить", "REVIEW"), ("В очереди", "QUEUED"), ("Избранное", "INTERESTING"), ("Пропущены", "SKIP"), ("Неактивные", "INACTIVE"), ("Отправлены", "SUBMITTED"), ("Ответы работодателей", "RESPONDED"), ("Требуют внимания", "ATTENTION"), ("Можно в очередь", "Manual queue eligible")]:
             self.dashboard_decision_filter.addItem(label, value)
         self.dashboard_decision_filter.hide()
         self.dashboard_source_filter = QComboBox(self)
@@ -1104,7 +1201,7 @@ class JobAgentWindow(QMainWindow):
             self.source_filter_actions[value] = action
         filter_menu.addSeparator()
         self.extra_filter_actions = {}
-        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("ATTENTION", "Требуют внимания"), ("Manual queue eligible", "Можно в очередь")]:
+        for value, label in [("QUEUED", "В очереди"), ("INTERESTING", "Избранное"), ("SKIP", "Пропущены"), ("INACTIVE", "Неактивные"), ("ATTENTION", "Требуют внимания"), ("RESPONDED", "Ответы работодателей"), ("Manual queue eligible", "Можно в очередь")]:
             action = filter_menu.addAction(label)
             action.setCheckable(True)
             action.triggered.connect(lambda checked=False, v=value: self._select_decision_filter(v))
@@ -1191,6 +1288,12 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_detail = VacancyDetail()
         self.dashboard_detail.setPlainText("Выбери вакансию, чтобы увидеть описание и причины оценки.")
         detail_layout.addWidget(self.dashboard_detail, 1)
+        self.response_summary = QLabel("")
+        self.response_summary.setObjectName("Muted")
+        self.response_summary.setTextFormat(Qt.PlainText)
+        self.response_summary.setWordWrap(True)
+        self.response_summary.hide()
+        detail_layout.addWidget(self.response_summary)
         dash_buttons = QGridLayout()
         dash_buttons.setSpacing(10)
         self.detail_buttons_layout = dash_buttons
@@ -1229,6 +1332,9 @@ class JobAgentWindow(QMainWindow):
             action = menu.addAction(label)
             action.triggered.connect(callback)
             self.detail_actions.append(action)
+        menu.addSeparator()
+        self.response_action = menu.addAction("Отметить ответ работодателя…")
+        self.response_action.triggered.connect(self._edit_response_tracking)
         more.setMenu(menu)
         self.more_job_btn = more
         detail_layout.addLayout(dash_buttons)
@@ -1603,6 +1709,8 @@ class JobAgentWindow(QMainWindow):
             self.open_job_btn.setEnabled(False)
             self.prepare_now_btn.setEnabled(False)
             self.more_job_btn.setEnabled(False)
+            self.response_summary.hide()
+            self.response_action.setEnabled(False)
             return
         overrides = load_job_overrides()
         decision = display_decision(record, overrides)
@@ -1612,6 +1720,22 @@ class JobAgentWindow(QMainWindow):
             self._detail_signature = signature
         running = bool(self.agent_process and self.agent_process.is_alive())
         terminal = decision == "SUBMITTED"
+        response = load_response_tracking().get(
+            canonical_local_job_id(record.get("job_id", ""), record.get("url", "")),
+            {},
+        )
+        if terminal:
+            stage = RESPONSE_STAGES.get(response.get("stage", "WAITING"), "Ожидаем ответ")
+            summary = f"Этап после отправки: {stage}"
+            if response.get("next_date"):
+                summary += f" · Следующая дата: {response['next_date']}"
+            if response.get("notes"):
+                note = response["notes"]
+                summary += f" · Заметка: {note[:120]}" + ("…" if len(note) > 120 else "")
+            self.response_summary.setText(summary)
+            self.response_summary.show()
+        else:
+            self.response_summary.hide()
         supported = self._application_source_supported(record)
         self.open_job_btn.setEnabled(bool(record.get("url")))
         self.more_job_btn.setEnabled(True)
@@ -1649,6 +1773,7 @@ class JobAgentWindow(QMainWindow):
         for index in (1, 2, 3, 6):
             self.detail_actions[index].setEnabled(not running and not terminal and not inactive)
         self.prepare_now_btn.setEnabled(self.prepare_now_btn.isEnabled() and not inactive)
+        self.response_action.setEnabled(terminal and not running and not inactive)
         self.detail_actions[0].setEnabled(
             not running and not terminal and not inactive and supported
             and record.get("decision") == "REVIEW"
@@ -1695,6 +1820,11 @@ class JobAgentWindow(QMainWindow):
             return True
         if selected == "SUBMITTED":
             return status in TERMINAL_STATUSES
+        if selected == "RESPONDED":
+            return (
+                status in TERMINAL_STATUSES
+                and record.get("response_stage", "WAITING") not in {"WAITING", ""}
+            )
         if selected == "ATTENTION":
             return vacancy_needs_attention(record)
         if selected == "Manual queue eligible":
@@ -1707,11 +1837,13 @@ class JobAgentWindow(QMainWindow):
         self.dashboard_all_records = load_vacancy_records()
         overrides = load_job_overrides()
         submitted_ids = terminal_job_ids()
+        responses = load_response_tracking()
         for record in self.dashboard_all_records:
             canonical = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
             if canonical in submitted_ids:
                 record["status"] = "SUBMITTED_MANUALLY"
                 record["decision"] = "APPLY"
+            record["response_stage"] = responses.get(canonical, {}).get("stage", "WAITING")
         self.dashboard_records = [r for r in self.dashboard_all_records if self._dashboard_record_matches_filters(r, overrides)]
         self.dashboard_table.blockSignals(True)
         self.dashboard_table.setRowCount(len(self.dashboard_records))
@@ -1724,7 +1856,13 @@ class JobAgentWindow(QMainWindow):
                 str(record.get("title", "")) + "\n" + (record.get("company") or "Компания не определена"),
                 str(record.get("source") or "—"),
                 str(record.get("score", "—")) + "/100",
-                DECISION_LABELS.get(decision, decision),
+                DECISION_LABELS.get(decision, decision)
+                + (
+                    "\n" + RESPONSE_STAGES[record["response_stage"]]
+                    if decision == "SUBMITTED"
+                    and record.get("response_stage", "WAITING") not in {"", "WAITING"}
+                    else ""
+                ),
             ]
             for col, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -1783,6 +1921,79 @@ class JobAgentWindow(QMainWindow):
             )
             return
         QDesktopServices.openUrl(QUrl(url))
+
+    def _edit_response_tracking(self):
+        """User-entered recruiting progress; never modifies submission history."""
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+        submitted = (
+            str(record.get("status", "")).upper() in TERMINAL_STATUSES
+            or jid in terminal_job_ids()
+        )
+        if not submitted:
+            QMessageBox.information(
+                self, "Ответы работодателей",
+                "Отметить ответ можно только после подтверждённой отправки отклика.",
+            )
+            return
+        if str(load_job_overrides().get(jid, {}).get("decision", "")).upper() == "INACTIVE":
+            return
+
+        existing = load_response_tracking().get(jid, {})
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Ответ работодателя")
+        dialog.setMinimumWidth(450)
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        stage_combo = QComboBox(dialog)
+        stage_combo.setObjectName("response_stage_combo")
+        for stage, label in RESPONSE_STAGES.items():
+            stage_combo.addItem(label, stage)
+        stage_combo.setCurrentIndex(max(
+            0, stage_combo.findData(existing.get("stage", "WAITING"))
+        ))
+        form.addRow("Этап рассмотрения", stage_combo)
+
+        next_date = QLineEdit(dialog)
+        next_date.setObjectName("response_next_date")
+        next_date.setPlaceholderText("ГГГГ-ММ-ДД или ГГГГ-ММ-ДД ЧЧ:ММ")
+        next_date.setText(existing.get("next_date", ""))
+        form.addRow("Следующая дата", next_date)
+
+        notes = QTextEdit(dialog)
+        notes.setObjectName("response_notes")
+        notes.setPlaceholderText("Ответ рекрутера, детали собеседования, дальнейшие шаги…")
+        notes.setPlainText(existing.get("notes", ""))
+        notes.setFixedHeight(110)
+        form.addRow("Заметка", notes)
+        layout.addLayout(form)
+
+        notice = QLabel(
+            "Этапы заполняются только вручную. Job Agent не отправляет ответы "
+            "и не меняет подтверждённый статус отправки.",
+            dialog,
+        )
+        notice.setWordWrap(True)
+        notice.setTextFormat(Qt.PlainText)
+        layout.addWidget(notice)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        try:
+            save_response_tracking(
+                jid, stage_combo.currentData(), notes.toPlainText(),
+                next_date.text(),
+            )
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(dialog, "Ответ работодателя", str(exc))
+            return
+        self._refresh_dashboard()
 
     def _open_pending_handoff(self):
         """Explicit human click only: never continue Jobs.cz handoffs silently."""
