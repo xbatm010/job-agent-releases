@@ -78,6 +78,7 @@ QMenu::item:selected { background: #e3eeff; }
 DECISION_LABELS = {
     "APPLY": "Подходит", "REVIEW": "Проверить", "SKIP": "Пропущено",
     "QUEUED": "В очереди", "INTERESTING": "Избранное", "SUBMITTED": "Отправлено",
+    "CLOSED_REJECTED": "Закрыта · отказ",
 }
 
 
