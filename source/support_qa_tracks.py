@@ -155,6 +155,83 @@ def support_qa_entry_evidence(title, description):
     )
 
 
+# Public job pages can contain navigation and unrelated recommendations in
+# their large <main> text. When no JobPosting description exists, only trust
+# entry claims inside the bounded vacancy portion, never a page-wide footer.
+MAX_UNSTRUCTURED_ENTRY_CHARS = 6000
+RELATED_JOB_BOUNDARY = (
+    r"\b(?:similar jobs|related jobs|other job offers|other vacancies|"
+    r"podobne nabidky|podobne pozice|dalsi nabidky prace|"
+    r"dalsi volne pozice|doporucene pozice)\b"
+)
+
+
+def _normalized_offsets(raw):
+    """Normalized text plus character offsets, for literal original excerpts."""
+    import unicodedata
+    letters, offsets = [], []
+    gap = False
+    for index, character in enumerate(raw):
+        normalized = unicodedata.normalize("NFKD", character.casefold())
+        for symbol in normalized:
+            if unicodedata.combining(symbol):
+                continue
+            if "a" <= symbol <= "z" or "0" <= symbol <= "9":
+                if gap and letters:
+                    letters.append(" ")
+                    offsets.append(index)
+                gap = False
+                letters.append(symbol)
+                offsets.append(index)
+            elif letters:
+                gap = True
+    return "".join(letters), offsets
+
+
+def support_qa_entry_details(job):
+    """Find auditable entry claim only in a bounded vacancy description.
+
+    The title is a separate, visible form of evidence. The excerpt is text
+    taken from the actual employer page, not synthesized from a keyword list.
+    A long unstructured page is a weak source for *promotion*, so match
+    phrases only in the first 6000 characters before related-job sections.
+    """
+    title = str(job.get("actual_title") or job.get("title") or "")
+    structured = str(job.get("jobposting_description") or "")
+    raw = structured or str(job.get("description") or "")
+    origin = "JobPosting" if structured else "vacancy page"
+    if not structured:
+        raw = raw[:MAX_UNSTRUCTURED_ENTRY_CHARS]
+        normalized, offsets = _normalized_offsets(raw)
+        boundary = re.search(RELATED_JOB_BOUNDARY, normalized)
+        if boundary:
+            raw = raw[:offsets[boundary.start()]] if offsets else ""
+    entry, basis, years = support_qa_entry_evidence(title, raw)
+    quote = ""
+    if basis == "description":
+        normalized, offsets = _normalized_offsets(raw)
+        for pattern in DESCRIPTION_ENTRY_PATTERNS:
+            match = re.search(pattern, normalized)
+            if match and offsets:
+                quote = raw[offsets[match.start()]:offsets[match.end()-1] + 1].strip()
+                break
+        # No traceable quote => never promote a description-only claim.
+        if not quote:
+            entry, basis = False, "none"
+    elif basis == "title":
+        quote = title
+    # Experience requirements from the entire vacancy must not disappear
+    # just because the entry excerpt was restricted to its relevant section.
+    _a, _b, overall_years = support_qa_entry_evidence(title, job.get("description") or "")
+    return {
+        "entry": entry,
+        "basis": basis,
+        "quote": quote[:220],
+        "origin": "title" if basis == "title" else origin if quote else "none",
+        "experience_gate": years or overall_years,
+    }
+
+
 def support_qa_track(title):
     """Return 'support', 'qa' or None using the real vacancy title only."""
     normalized = normalize_title(title)
@@ -181,9 +258,10 @@ def support_qa_assessment(job, hard_experience=False):
         if re.search(pattern, description)
     ]
     matched = [name for name in signals if name in CANDIDATE_FAMILIAR[track]]
-    entry, entry_basis, required_junior_experience = support_qa_entry_evidence(
-        title, job.get("description") or ""
-    )
+    entry_details = support_qa_entry_details(job)
+    entry = entry_details["entry"]
+    entry_basis = entry_details["basis"]
+    required_junior_experience = entry_details["experience_gate"]
     # A non-Junior title may now qualify only with explicit, affirmative
     # graduate/no-experience language in the verified vacancy description.
     advanced_required = any(re.search(pattern, description) for pattern in ADVANCED_REQUIRED)
@@ -250,12 +328,15 @@ def support_qa_assessment(job, hard_experience=False):
         "verified_target_promotion": False,
         "entry_role": entry,
         "entry_evidence": entry_basis,
+        "entry_evidence_quote": entry_details["quote"],
+        "entry_evidence_origin": entry_details["origin"],
         "junior_experience_requirement": required_junior_experience,
         "confidence": {"strong": "high", "medium": "medium", "weak": "low"}.get(evidence, "low"),
         "evidence_verified": evidence == "strong",
         "reasons": [
             f"track={track}", f"entry_role={entry}",
             f"entry_evidence={entry_basis}",
+            f"entry_evidence_origin={entry_details['origin']}",
             f"junior_experience_requirement={required_junior_experience}",
             f"evidence={evidence}",
             "track_signals=" + (",".join(signals) or "none"),

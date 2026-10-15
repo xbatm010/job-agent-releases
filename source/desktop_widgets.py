@@ -273,7 +273,18 @@ class VacancyDetail(QScrollArea):
         self.content.addWidget(score_panel)
         self.content.addWidget(text_label("Почему подходит" if decision == "APPLY" else "Соответствие вакансии", "SectionTitle"))
 
-        if record.get("entry_role"):
+        evidence_basis = record.get("entry_evidence")
+        evidence_quote = record.get("entry_evidence_quote") or ""
+        if evidence_basis == "description" and evidence_quote:
+            self._check("Начальный уровень подтверждён описанием",
+                        "Цитата работодателя: " + evidence_quote, True)
+        elif evidence_basis == "title":
+            self._check("Начальный уровень подтверждён названием",
+                        str(evidence_quote), True)
+        elif evidence_basis == "none":
+            self._check("Начальный уровень не подтверждён",
+                        "Нет надёжного подтверждения начального уровня", None)
+        elif record.get("entry_role"):
             self._check("Стартовая позиция", "Junior / Student / Trainee в названии", True)
         elif record.get("hard_experience"):
             self._check("Требуется опыт работы", "В описании есть требование 3+ лет", False)
@@ -286,6 +297,9 @@ class VacancyDetail(QScrollArea):
             except (TypeError, ValueError):
                 skills_good = None
             self._check("Совпадение навыков", f"Оценка профиля: {fit}" + (f" · минимум {minimum}" if minimum is not None else ""), skills_good)
+        if evidence_basis is not None:
+            for blocker in record.get("target_apply_blockers") or []:
+                self._check("Условие подготовки не выполнено", str(blocker), False)
         evidence = record.get("evidence_quality")
         self._check("Описание проверено" if evidence == "strong" else "Описание требует проверки", "Полное описание получено" if evidence == "strong" else "Данных для уверенной оценки недостаточно", evidence == "strong")
 

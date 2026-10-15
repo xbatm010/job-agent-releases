@@ -1216,6 +1216,9 @@ def enrich_job(job, session):
                 ).get_text(" ", strip=True)
             )
 
+        # Preserve the employer's structured description independently of
+        # the longer visible page (which may include unrelated job cards).
+        job["jobposting_description"] = structured_description
         # Structured JobPosting is often much better on *.jobs.cz microsites.
         job["description"] = (
             structured_description
@@ -1908,6 +1911,10 @@ def save_status(job, status, score, reason):
         "expanded_signals": job.get("expanded_signals", []),
         "expanded_entry_promotion": bool(job.get("expanded_entry_promotion")),
         "entry_role": bool(job.get("entry_role")),
+        "entry_evidence": job.get("entry_evidence", ""),
+        "entry_evidence_quote": job.get("entry_evidence_quote", ""),
+        "entry_evidence_origin": job.get("entry_evidence_origin", ""),
+        "junior_experience_requirement": bool(job.get("junior_experience_requirement")),
         "location_gate": job.get("location_gate", ""),
         "hard_experience": bool(job.get("hard_experience")),
         "manual_queue": bool(job.get("manual_queue")),
@@ -3182,6 +3189,9 @@ def merge_browser_evidence(
                 "html.parser",
             ).get_text(" ", strip=True)
         )
+
+    if structured_text:
+        job["jobposting_description"] = structured_text
 
     best_rendered = (
         structured_text
@@ -8250,6 +8260,8 @@ async def main():
             f"candidate_fit={job.get('candidate_fit', '-')} | "
             f"target_fit_min={job.get('target_candidate_fit_min') or '-'} | "
             f"target_blockers={'; '.join(job.get('target_apply_blockers', [])) or 'none'} | "
+            f"entry_evidence={job.get('entry_evidence', '-')} | "
+            f"entry_origin={job.get('entry_evidence_origin', '-')} | "
             f"expanded_fit_min={job.get('expanded_candidate_fit_min') or '-'} | "
             f"entry_promotion={'YES' if job.get('expanded_entry_promotion') else 'NO'} | "
             f"expanded_blockers={'; '.join(job.get('expanded_apply_blockers', [])) or 'none'} | "
