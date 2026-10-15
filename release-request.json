@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 57,
   "version": "3.0.10",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.10 Beta refines IT Support, Helpdesk, Application Support, Manual Tester and Junior QA readiness based on employer requirements rather than only the vacancy title. For roles without a Junior/L1 title marker, confirmed descriptions that explicitly welcome graduates or state prior experience is not required (Czech and English) can now qualify for APPLY after the existing strong vacancy evidence, two familiar skill indicators, concrete diagnostic/test task and no mandatory advanced technology requirement. Generic training or benefit language alone cannot qualify a job. Explicit or ambiguous mandatory 1–2-years experience conditions block automatic preparation even when Junior is in the title; existing 3+-year, Senior and advanced skill safeguards stay in place. Better detection of troubleshooting and manual testing phrases. The scorer exposes structured entry_evidence and junior_experience_requirement diagnostics. Data/BI scoring, existing 108/12 discovery budgets, submitted-history filtering, two-resume routing, read-only Gmail and final employer Submit by hand are unchanged. Offline regression tests passed 158/158; macOS field validation must be performed in SEARCH_ONLY before preparing any new Support/QA applications.",
-  "last_published": "3.0.9",
-  "last_sha256": "26de08412487363c57c2132fc02e1b352bf3cd761eae873716bff60b09c75067"
+  "last_published": "3.0.10",
+  "last_sha256": "0cadcf7facec07aa54a230247baaaba3275cfdd21f86c863a8872e17a307d4eb"
 }
