@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 61,
-  "version": "3.0.14",
+  "publish": true,
+  "request_id": 62,
+  "version": "3.0.15",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent 3.0.14 Beta adds an explicit human-confirmed action to close a rejected, still-pending Jobs.cz manual handoff such as the Sanofi Analytics and PowerBI Development Intern (ID 2001443223). The user can choose 'Получен отказ — закрыть ручной отклик…' and optionally add a private note. An atomic local CLOSED_REJECTED override retires that handoff from future searches, enrichment, APPLY recommendations, manual handoff links, and the pending handoff count while preserving its original applications.csv history. It never fakes SUBMITTED_MANUALLY, increases the sent counter, or changes recruiter tracking for genuinely submitted applications. The Dashboard labels rejected closures clearly in the Inactive tab, shows closure details, disables preparation, and asks for explicit confirmation before restoring a closed job (which would reactivate the original pending handoff). The latest 52 confirmed submissions and other pending handoffs remain protected. No change to scoring, search budgets, browser fallback, CV routing, employer Submit, or privacy. 197/197 automated tests passed including real Qt offscreen regression tests and rejection closure/pending-counter history safeguards. After installing, choose the Sanofi pending handoff in Dashboard and manually mark the rejection; do not assume the action has already been applied to local files.",
+  "notes": "Job Agent 3.0.15 Beta adds Dashboard conversion metrics for confirmed submitted applications: recruiter response rate, interview rate and offer rate. All percentages use unique confirmed submissions as the denominator, ignore unsubmitted handoffs, handle empty history safely, and preserve existing response stages and manual safety rules. Updated regression tests and successful CI on the release source revision.",
   "last_published": "3.0.14",
   "last_sha256": "55d236e9bfb2ca8f43c4a67e01615c5ce75ef08d6dbfc74792726da4f8ce8ba2"
 }
