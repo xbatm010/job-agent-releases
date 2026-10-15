@@ -272,6 +272,13 @@ class VacancyDetail(QScrollArea):
         score_row.addWidget(text_label(caption, "ScoreCaption"))
         self.content.addWidget(score_panel)
         self.content.addWidget(text_label("Почему подходит" if decision == "APPLY" else "Соответствие вакансии", "SectionTitle"))
+        if decision == "CLOSED_REJECTED":
+            details = "Отказ работодателя отмечен вручную. Это НЕ подтверждённая отправка."
+            if record.get("closure_date"):
+                details += " Закрыто: " + str(record["closure_date"])
+            if record.get("closure_note"):
+                details += " Заметка: " + str(record["closure_note"])
+            self._check("Отклик закрыт после отказа", details, False)
 
         evidence_basis = record.get("entry_evidence")
         evidence_quote = record.get("entry_evidence_quote") or ""
