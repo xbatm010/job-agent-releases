@@ -1,12 +1,12 @@
 {
-  "publish": false,
-  "request_id": 59,
-  "version": "3.0.12",
+  "publish": true,
+  "request_id": 60,
+  "version": "3.0.13",
   "channel": "beta",
   "min_version": "2.3.1",
   "base_source_url": "",
   "base_source_sha256": "",
-  "notes": "Job Agent 3.0.12 Beta audits the five new IT Support/Manual QA APPLY recommendations observed in a successful 3.0.11 macOS search-only run. A description-derived entry-level status now requires a traceable, literal employer phrase found in vacancy-specific JobPosting structured text or a bounded vacancy section, rather than an unrelated recommendation/footer on a long portal page. Full-description mandatory 1-2+ years experience gates are still enforced even if a shorter excerpt is considered entry-level; senior, required advanced technologies, strong job evidence and familiar/practical skill guards remain in place. For each Support/QA vacancy the agent stores and shows the matched entry phrase with its source (title, vacancy page or JobPosting), and the Dashboard now distinguishes junior words in the job title from explicit no-experience text and shows role-specific preparation blockers. The evidence is stored locally only, and no user CVs or private application details enter the release. Data/BI scoring, per-track search budgets, two CVs, confirmed-submission history, browser fallback, source policy and final manual employer Submit are unchanged. 177/177 automated offline regression tests passed, including source/fake-footer checks and a Qt Dashboard rendering test. Recheck SEARCH_ONLY on the user's Mac and manually inspect each APPLY before preparation; a conservative REVIEW downgrade is expected if evidence is unverifiable.",
+  "notes": "Job Agent 3.0.13 Beta improves Dashboard history accuracy and employer response tracking after real macOS logs confirmed 52 manually submitted applications. On every Dashboard refresh, confirmed submissions are prioritized over stale APPLY/REVIEW and manual queue overrides: sent vacancies are shown under Submitted, not as new ready applications, while original scores and decision history remain available. Current openings are listed before sent applications in All. A visible action on each confirmed submitted vacancy lets the user manually record recruiter contact, interview, rejection, offer or reminder using the existing local response tracking editor. No employer decision is inferred from a successful Submit. Company labels now survive a later blank discovery snapshot and can be restored from saved application history; a conservative HTTP enrichment fallback reads the displayed company only from an explicit employer profile link, excluding unrelated navigation and generic labels. Local vacancy snapshots retain the source of a company label. No changes to candidate CV selection, search limits, scoring thresholds, browser fallback, pending manual handoff or final manual-only Submit. Offline regression suite passed 188/188 tests including real offscreen Qt Dashboard tests. Validate Beta update on Mac: previously submitted jobs should not appear under fresh APPLY, submission count should remain 52, and response-stage edits must preserve submitted status.",
   "last_published": "3.0.12",
   "last_sha256": "456c68c628f9ba542e220ef3e7a6e8fb72ebf27d26993294d804819c5ddc34fb"
 }
