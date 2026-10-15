@@ -327,6 +327,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(stats, dict(
             sent=4, replies=3, interviews=1, rejected=1,
             offers=1, due=2, next_week=1,
+            reply_rate=75.0, interview_rate=25.0, offer_rate=25.0,
         ))
         self.assertEqual(
             [(x["job_id"], x["bucket"]) for x in tasks],
