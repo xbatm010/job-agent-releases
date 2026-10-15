@@ -14,6 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
+from browser_runtime import BrowserUnavailable, launch_chromium
 
 load_dotenv()
 
@@ -2202,7 +2203,7 @@ async def browser_discovery_fallback(
     context = None
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await launch_chromium(p.chromium, headless=True)
             context = await browser.new_context(
                 viewport={"width": 1440, "height": 1000},
                 locale="cs-CZ",
@@ -3284,7 +3285,15 @@ async def browser_recover_weak_evidence(jobs):
     show_track_counts("Browser evidence selected", candidates)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        try:
+            browser = await launch_chromium(p.chromium, headless=True)
+        except BrowserUnavailable as exc:
+            # Search-only must still score HTTP-enriched jobs. Weak listings
+            # remain weak; the absent browser is never simulated or verified.
+            for job in candidates:
+                job["browser_evidence_error"] = "browser_unavailable"
+            print(f"⚠️ Browser evidence skipped: {exc}")
+            return jobs
         context = await browser.new_context(
             viewport={"width": 1440, "height": 1000},
             locale="cs-CZ",
@@ -7484,8 +7493,8 @@ async def prepare_application(job):
     print(f"📄 CV for {group}: {Path(CV_PATH).name}")
     async with async_playwright() as p:
         profile_dir = resolve_browser_profile_dir()
-        browser = await p.chromium.launch_persistent_context(
-            str(profile_dir),
+        browser = await launch_chromium(
+            p.chromium, profile_dir=str(profile_dir),
             headless=False,
             viewport={"width": 1440, "height": 1000},
         )
