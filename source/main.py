@@ -1107,6 +1107,35 @@ def extract_company(soup):
                 return logo
     return ""
 
+def extract_company_from_employer_profile_link(soup, title=""):
+    """Use explicit employer-profile links when JobPosting metadata is absent.
+
+    Never infer an employer from an arbitrary page heading, job recommendation,
+    or the page's "company" words. Only anchor text from a Jobs.cz/Prace.cz
+    employer profile can be trusted for a best-effort fallback.
+    """
+    scope = soup.find("main") or soup.find("article") or soup.body
+    if scope is None:
+        return ""
+    for link in scope.select("a[href]"):
+        href = str(link.get("href") or "")
+        if not re.search(r"/(?:fp|firma|zamestnavatel)/[^/?#]+", href, re.I):
+            continue
+        if link.find_parent(["nav", "header", "footer"]) is not None:
+            continue
+        label = clean(link.get_text(" ", strip=True))
+        if not label or normalize_key_text(label) == normalize_key_text(title):
+            continue
+        if normalize_key_text(label) in {
+            "full time", "part time", "hybrid", "remote", "employer",
+            "firma", "company", "zobrazit firmu", "profil",
+        }:
+            continue
+        if valid_company(label, "employer_link"):
+            return label
+    return ""
+
+
 def extract_company_from_search_card(article, title=""):
     """
     Conservative company extraction from a Jobs.cz search-result card.
@@ -1202,6 +1231,13 @@ def enrich_job(job, session):
             if detected_company:
                 job["company"] = detected_company
                 job["company_source"] = "http_dom"
+        if not job.get("company") and job.get("source") in {"jobs.cz", "prace.cz"}:
+            company_link = extract_company_from_employer_profile_link(
+                soup, job.get("actual_title") or job.get("title", "")
+            )
+            if company_link:
+                job["company"] = company_link
+                job["company_source"] = "http_employer_profile"
         body_main = soup.find("main") or soup.body
         visible_description = clean(
             body_main.get_text(" ", strip=True) if body_main else ""
@@ -1894,6 +1930,7 @@ def save_status(job, status, score, reason):
         "job_id": canonical_id,
         "title": job.get("actual_title") or job.get("title", ""),
         "company": job.get("company", ""),
+        "company_source": job.get("company_source", ""),
         "url": job.get("url", ""),
         "source": job.get("source", ""),
         "location": job.get("location", ""),
