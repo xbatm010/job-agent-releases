@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 62,
   "version": "3.0.15",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.15 Beta adds Dashboard conversion metrics for confirmed submitted applications: recruiter response rate, interview rate and offer rate. All percentages use unique confirmed submissions as the denominator, ignore unsubmitted handoffs, handle empty history safely, and preserve existing response stages and manual safety rules. Updated regression tests and successful CI on the release source revision.",
-  "last_published": "3.0.14",
-  "last_sha256": "55d236e9bfb2ca8f43c4a67e01615c5ce75ef08d6dbfc74792726da4f8ce8ba2"
+  "last_published": "3.0.15",
+  "last_sha256": "9a3ac02f4f0546b67c0fe13be00f82592ca8ee7aabc6a8babf0b7ea941c1d38c"
 }
