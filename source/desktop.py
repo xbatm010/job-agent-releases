@@ -608,6 +608,47 @@ def write_job_override(job_id: str, decision: str) -> None:
     )
 
 
+def close_rejected_handoff(record, note="") -> dict:
+    """Mark a rejected manual handoff closed, not submitted; preserve CSV history."""
+    jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+    if not jid:
+        raise ValueError("Не удалось определить ID вакансии.")
+    if str(record.get("source", "")).lower() != "jobs.cz":
+        raise ValueError("Закрытие ручной передачи поддерживается только для Jobs.cz.")
+    if str(record.get("status", "")).upper() != "PRE_APPLY_CONFIRMATION_REQUIRED":
+        raise ValueError("Вакансия не находится на этапе незавершённой ручной передачи.")
+    if jid in terminal_job_ids():
+        raise ValueError("Отправка уже подтверждена: отметь отказ через ответы работодателя.")
+    note = str(note or "").strip()
+    if len(note) > 1000:
+        raise ValueError("Длина заметки не должна превышать 1000 символов.")
+    data = load_job_overrides()
+    if str(data.get(jid, {}).get("decision", "")).upper() == "CLOSED_REJECTED":
+        return data[jid]
+    entry = {
+        "decision": "CLOSED_REJECTED",
+        "reason": "employer_rejection_reported_by_user",
+        "note": note,
+        "closed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    data[jid] = entry
+    OVERRIDES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=str(OVERRIDES_FILE.parent),
+            prefix=".job-closures-", suffix=".tmp", delete=False,
+        ) as fh:
+            temporary = Path(fh.name)
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(temporary, OVERRIDES_FILE)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    return entry
+
+
 def delete_job_override(job_id: str) -> bool:
     job_id = canonical_local_job_id(job_id)
     if not job_id:
@@ -1595,6 +1636,7 @@ class JobAgentWindow(QMainWindow):
             ("Копировать письмо", self._copy_selected_cover_letter),
             ("Удалить запись из базы…", self._delete_selected_vacancy),
             ("Продолжить отклик вручную…", self._open_pending_handoff),
+            ("Получен отказ — закрыть ручной отклик…", self._close_rejected_handoff),
         ]:
             action = menu.addAction(label)
             action.triggered.connect(callback)
@@ -2393,7 +2435,8 @@ class JobAgentWindow(QMainWindow):
         eligible = record.get("decision") == "APPLY" or (
             record.get("decision") == "REVIEW"
         )
-        enabled = not running and not terminal and supported and eligible and decision != "SKIP"
+        enabled = (not running and not terminal and supported and eligible
+                   and decision not in {"SKIP", "CLOSED_REJECTED"})
         self.prepare_now_btn.setEnabled(enabled)
         self.prepare_now_btn.setToolTip(
             "Отклик уже отправлен" if terminal else
@@ -2410,13 +2453,21 @@ class JobAgentWindow(QMainWindow):
                 action.setEnabled(
                     str(record.get("status", "")) == "PRE_APPLY_CONFIRMATION_REQUIRED"
                     and url.startswith("https://www.jobs.cz/externi-jof/")
-                    and str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() != "INACTIVE"
+                    and str(overrides.get(canonical_local_job_id(record.get("job_id", ""), record.get("url", "")), {}).get("decision", "")).upper()
+                    not in {"INACTIVE", "CLOSED_REJECTED"}
                 )
             else:
                 action.setEnabled(not running and not terminal)
-        inactive = str(overrides.get(str(record.get("job_id", "")), {}).get("decision", "")).upper() == "INACTIVE"
-        self.detail_actions[4].setEnabled(not running and not inactive)
-        self.detail_actions[5].setEnabled(not running and inactive)
+        key = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+        override_status = str(overrides.get(key, {}).get("decision", "")).upper()
+        inactive = override_status in {"INACTIVE", "CLOSED_REJECTED"}
+        self.detail_actions[4].setEnabled(not running and not inactive and not terminal)
+        self.detail_actions[5].setEnabled(not running and inactive and not terminal)
+        self.detail_actions[11].setEnabled(
+            not running and not terminal and override_status != "CLOSED_REJECTED"
+            and str(record.get("status", "")).upper() == "PRE_APPLY_CONFIRMATION_REQUIRED"
+            and str(record.get("source", "")).lower() == "jobs.cz"
+        )
         for index in (1, 2, 3, 6):
             self.detail_actions[index].setEnabled(not running and not terminal and not inactive)
         self.prepare_now_btn.setEnabled(self.prepare_now_btn.isEnabled() and not inactive)
@@ -2455,7 +2506,7 @@ class JobAgentWindow(QMainWindow):
         status = str(record.get("status", "")).upper().strip()
 
         selected = self.dashboard_decision_filter.currentData() or "All"
-        if override == "INACTIVE" and effective != "SUBMITTED":
+        if override in {"INACTIVE", "CLOSED_REJECTED"} and effective != "SUBMITTED":
             return selected == "INACTIVE"
         if selected == "INACTIVE":
             return False
@@ -2490,6 +2541,9 @@ class JobAgentWindow(QMainWindow):
                 # for audit, but never redisplay this job as APPLY or REVIEW.
                 record["status"] = "SUBMITTED_MANUALLY"
             record["response_stage"] = responses.get(canonical, {}).get("stage", "WAITING")
+            if str(overrides.get(canonical, {}).get("decision", "")).upper() == "CLOSED_REJECTED":
+                record["closure_note"] = str(overrides[canonical].get("note", ""))
+                record["closure_date"] = str(overrides[canonical].get("closed_at", ""))
         # Current opportunities first, sent applications still accessible via
         # the Submitted tab. Do not delete or rewrite historical snapshots.
         self.dashboard_all_records.sort(
@@ -2714,6 +2768,9 @@ class JobAgentWindow(QMainWindow):
         """Explicit human click only: never continue Jobs.cz handoffs silently."""
         record = self._selected_dashboard_record()
         if not record or str(record.get("status", "")) != "PRE_APPLY_CONFIRMATION_REQUIRED":
+            return
+        jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
+        if str(load_job_overrides().get(jid, {}).get("decision", "")).upper() in {"INACTIVE", "CLOSED_REJECTED"}:
             return
         url = str(record.get("handoff_url", "")).strip()
         if not url.startswith("https://www.jobs.cz/externi-jof/"):
@@ -2985,6 +3042,46 @@ class JobAgentWindow(QMainWindow):
             f"Резервная копия: {backup or 'нет'}",
         )
 
+    def _close_rejected_handoff(self):
+        record = self._selected_dashboard_record()
+        if not record:
+            return
+        if self.agent_process and self.agent_process.is_alive():
+            QMessageBox.warning(self, "Закрыть отклик", "Дождись завершения поиска.")
+            return
+        if str(record.get("status", "")).upper() != "PRE_APPLY_CONFIRMATION_REQUIRED":
+            QMessageBox.information(
+                self, "Закрыть отклик", "Действие доступно только для незавершённой ручной передачи."
+            )
+            return
+        answer = QMessageBox.question(
+            self, "Отказ работодателя",
+            "Работодатель действительно сообщил об отказе?\n\n"
+            "Ручной отклик будет закрыт, а вакансия исключена из нового поиска. "
+            "Число подтверждённых отправок НЕ изменится. "
+            "Восстановление возможно вручную в разделе «Неактивные».",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        note, ok = QInputDialog.getText(
+            self, "Заметка об отказе",
+            "Необязательная заметка (дата или причина):"
+        )
+        if not ok:
+            return
+        try:
+            close_rejected_handoff(record, note)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Закрыть отклик", str(exc))
+            return
+        self._append_log(
+            f"Ручной отклик закрыт после отказа: "
+            f"{canonical_local_job_id(record.get('job_id', ''), record.get('url', ''))}; "
+            "число отправок не изменилось"
+        )
+        self._refresh_dashboard()
+
     def _archive_selected_vacancy(self):
         record = self._selected_dashboard_record()
         if not record:
@@ -3004,8 +3101,19 @@ class JobAgentWindow(QMainWindow):
         if not record:
             return
         jid = str(record.get("job_id", ""))
-        if str(load_job_overrides().get(jid, {}).get("decision", "")).upper() != "INACTIVE":
+        state = str(load_job_overrides().get(jid, {}).get("decision", "")).upper()
+        if state not in {"INACTIVE", "CLOSED_REJECTED"}:
             return
+        if state == "CLOSED_REJECTED":
+            answer = QMessageBox.question(
+                self, "Снова открыть отклик?",
+                "Отказ работодателя уже был отмечен. Восстановление вернёт "
+                "вакансию в поиск и возобновит ожидание ручного отклика. "
+                "Продолжить?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
         delete_job_override(jid)
         self._refresh_dashboard()
 

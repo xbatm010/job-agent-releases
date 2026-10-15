@@ -1849,9 +1849,19 @@ def load_pending_manual_handoffs():
             key = canonicalize_saved_history_id(row.get("job_id", ""))
             if key:
                 latest[key] = row.get("status", "")
+    # Closing a handoff after a real recruiter rejection must not masquerade
+    # as a successful Submit. Overrides are separate from applications.csv,
+    # but still retire the handoff from every future run.
+    closures = {
+        canonicalize_saved_history_id(key)
+        for key, value in load_job_overrides().items()
+        if isinstance(value, dict)
+        and str(value.get("decision", "")).upper() == "CLOSED_REJECTED"
+    }
     return {
         key for key, status in latest.items()
         if status == "PRE_APPLY_CONFIRMATION_REQUIRED"
+        and key not in closures
     }
 
 
@@ -8149,7 +8159,8 @@ async def main():
     job_overrides = load_job_overrides()
     inactive_ids = {
         key for key, value in job_overrides.items()
-        if str(value.get("decision", "")).upper() == "INACTIVE"
+        if str(value.get("decision", "")).upper()
+        in {"INACTIVE", "CLOSED_REJECTED"}
     }
     filter_counts = print_discovery_filter_breakdown(
         jobs, processed, inactive_ids, pending_handoffs
@@ -8207,7 +8218,7 @@ async def main():
     )
 
     ranked = []
-    for job in [j for j in deduped if str(job_overrides.get(canonical_history_key(j), {}).get("decision", "")).upper() != "INACTIVE"]:
+    for job in [j for j in deduped if str(job_overrides.get(canonical_history_key(j), {}).get("decision", "")).upper() not in {"INACTIVE", "CLOSED_REJECTED"}]:
         if (
             job.get("source") == "jobs.cz"
             and not job.get("company")
