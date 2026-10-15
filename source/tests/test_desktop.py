@@ -485,9 +485,9 @@ class DesktopTests(unittest.TestCase):
             }
 
         with patch.object(desktop.QMessageBox, "question",
-                          return_value=desktop.QMessageBox.Yes), \\
+                          return_value=desktop.QMessageBox.Yes), \
              patch.object(desktop.QInputDialog, "getText",
-                          return_value=("Отказ Sanofi", True)), \\
+                          return_value=("Отказ Sanofi", True)), \
              patch.object(desktop, "close_rejected_handoff", side_effect=save_stub):
             self.window.detail_actions[11].trigger()
 
@@ -524,7 +524,7 @@ class DesktopTests(unittest.TestCase):
         self.filter("INACTIVE")
         self.window.dashboard_table.selectRow(0)
         with patch.object(desktop.QMessageBox, "question",
-                          return_value=desktop.QMessageBox.No), \\
+                          return_value=desktop.QMessageBox.No), \
              patch.object(desktop, "delete_job_override") as removal:
             self.window._restore_selected_vacancy()
             removal.assert_not_called()
@@ -534,7 +534,7 @@ class DesktopTests(unittest.TestCase):
             self.overrides.pop(jid, None)
             return True
         with patch.object(desktop.QMessageBox, "question",
-                          return_value=desktop.QMessageBox.Yes), \\
+                          return_value=desktop.QMessageBox.Yes), \
              patch.object(desktop, "delete_job_override", side_effect=restore_stub):
             self.window._restore_selected_vacancy()
         self.filter("ATTENTION")
