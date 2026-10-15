@@ -525,6 +525,10 @@ def load_vacancy_records() -> list[dict]:
                     )
                     if jid:
                         row["job_id"] = jid
+                        previous = latest.get(jid) or {}
+                        if not str(row.get("company") or "").strip() and previous.get("company"):
+                            row["company"] = previous["company"]
+                            row["company_source"] = previous.get("company_source", "")
                         latest[jid] = row
         except Exception:
             pass
@@ -555,6 +559,9 @@ def load_vacancy_records() -> list[dict]:
                         copied = dict(row)
                         copied["job_id"] = jid
                         latest[jid] = copied
+                    elif jid in latest and not latest[jid].get("company") and row.get("company"):
+                        latest[jid]["company"] = row["company"]
+                        latest[jid]["company_source"] = "submitted_history"
         except Exception:
             pass
 
@@ -2448,7 +2455,7 @@ class JobAgentWindow(QMainWindow):
         status = str(record.get("status", "")).upper().strip()
 
         selected = self.dashboard_decision_filter.currentData() or "All"
-        if override == "INACTIVE":
+        if override == "INACTIVE" and effective != "SUBMITTED":
             return selected == "INACTIVE"
         if selected == "INACTIVE":
             return False
