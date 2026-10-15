@@ -459,6 +459,95 @@ class DesktopTests(unittest.TestCase):
         self.window._refresh_dashboard()
         self.assertEqual(len(self.window.dashboard_records), 0)
 
+    def test_rejected_handoff_action_closes_without_fake_sent_status(self):
+        entry = dict(
+            job_id="job:2001443223", title="Sanofi PowerBI Intern",
+            company="Sanofi", score=83, decision="APPLY",
+            status="PRE_APPLY_CONFIRMATION_REQUIRED",
+            source="jobs.cz", url="https://www.jobs.cz/rpd/2001443223/",
+            handoff_url="https://www.jobs.cz/externi-jof/2001443223/",
+        )
+        self.records.append(entry)
+        self.window._refresh_dashboard()
+        self.filter("ATTENTION")
+        self.assertEqual(len(self.window.dashboard_records), 1)
+        self.window.dashboard_table.selectRow(0)
+        self.assertTrue(self.window.detail_actions[11].isEnabled())
+        original_sent = desktop.processed_count()
+
+        def save_stub(record, note=""):
+            self.assertEqual(record["job_id"], "job:2001443223")
+            self.assertEqual(note, "Отказ Sanofi")
+            self.overrides[record["job_id"]] = {
+                "decision": "CLOSED_REJECTED",
+                "note": note,
+                "closed_at": "2026-10-16T00:00:00+02:00",
+            }
+
+        with patch.object(desktop.QMessageBox, "question",
+                          return_value=desktop.QMessageBox.Yes), \\
+             patch.object(desktop.QInputDialog, "getText",
+                          return_value=("Отказ Sanofi", True)), \\
+             patch.object(desktop, "close_rejected_handoff", side_effect=save_stub):
+            self.window.detail_actions[11].trigger()
+
+        self.assertEqual(desktop.processed_count(), original_sent)
+        self.assertFalse(desktop.HISTORY_FILE.exists())
+        self.assertEqual(len(self.window.dashboard_records), 0)
+        self.filter("APPLY")
+        self.assertEqual([r["job_id"] for r in self.window.dashboard_records],
+                         ["job:2000000001"])
+        self.filter("INACTIVE")
+        self.assertEqual(len(self.window.dashboard_records), 1)
+        self.assertEqual(self.window.dashboard_records[0]["job_id"], "job:2001443223")
+        self.assertEqual(
+            desktop.display_decision(self.window.dashboard_records[0], self.overrides),
+            "CLOSED_REJECTED"
+        )
+        self.window.dashboard_table.selectRow(0)
+        self.assertFalse(self.window.prepare_now_btn.isEnabled())
+        self.assertFalse(self.window.detail_actions[10].isEnabled())
+        self.assertFalse(self.window.detail_actions[11].isEnabled())
+        self.assertTrue(self.window.detail_actions[5].isEnabled())
+        labels = [x.text() for x in self.window.dashboard_detail.findChildren(QLabel)]
+        self.assertTrue(any("Отказ Sanofi" in x for x in labels))
+
+    def test_closed_handoff_reopen_requires_explicit_confirmation(self):
+        record = dict(
+            job_id="job:2001443223", title="Sanofi PowerBI Intern",
+            decision="APPLY", status="PRE_APPLY_CONFIRMATION_REQUIRED",
+            source="jobs.cz", url="https://www.jobs.cz/rpd/2001443223/",
+            handoff_url="https://www.jobs.cz/externi-jof/2001443223/",
+        )
+        self.records.append(record)
+        self.overrides["job:2001443223"] = {"decision": "CLOSED_REJECTED"}
+        self.filter("INACTIVE")
+        self.window.dashboard_table.selectRow(0)
+        with patch.object(desktop.QMessageBox, "question",
+                          return_value=desktop.QMessageBox.No), \\
+             patch.object(desktop, "delete_job_override") as removal:
+            self.window._restore_selected_vacancy()
+            removal.assert_not_called()
+        self.assertEqual(self.overrides["job:2001443223"]["decision"], "CLOSED_REJECTED")
+
+        def restore_stub(jid):
+            self.overrides.pop(jid, None)
+            return True
+        with patch.object(desktop.QMessageBox, "question",
+                          return_value=desktop.QMessageBox.Yes), \\
+             patch.object(desktop, "delete_job_override", side_effect=restore_stub):
+            self.window._restore_selected_vacancy()
+        self.filter("ATTENTION")
+        self.assertEqual([r["job_id"] for r in self.window.dashboard_records],
+                         ["job:2001443223"])
+
+    def test_submitted_job_cannot_use_rejected_handoff_action(self):
+        self.filter("SUBMITTED")
+        self.window.dashboard_table.selectRow(0)
+        self.assertFalse(self.window.detail_actions[11].isEnabled())
+        self.assertTrue(self.window.track_response_btn.isEnabled())
+
+
     def test_inactive_vacancy_hidden_and_restorable_in_filter(self):
         self.overrides["job:2000000001"] = {"decision": "INACTIVE"}
         self.window._refresh_dashboard()
