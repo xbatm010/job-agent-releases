@@ -1930,6 +1930,7 @@ def save_status(job, status, score, reason):
         "job_id": canonical_id,
         "title": job.get("actual_title") or job.get("title", ""),
         "company": job.get("company", ""),
+        "company_source": job.get("company_source", ""),
         "url": job.get("url", ""),
         "source": job.get("source", ""),
         "location": job.get("location", ""),
