@@ -82,7 +82,7 @@ ADVANCED_REQUIRED = (
 # marker in the title. A generic "training" benefit or mention of graduates
 # elsewhere in a full HTML page cannot by itself qualify a vacancy.
 DESCRIPTION_ENTRY_PATTERNS = (
-    r"\b(?:no|without)\s+(?:(?:prior|previous|professional|commercial|work)\s+)?"
+    r"\b(?:no|without)\s+(?:(?:prior|previous|professional|commercial|work)\s+){0,2}"
     r"experience\s+(?:is\s+)?(?:required|necessary|needed)\b",
     r"\b(?:prior|previous|professional|commercial|work)\s+experience\s+"
     r"(?:is\s+)?(?:not|isnt)\s+(?:required|necessary|needed)\b",
@@ -107,7 +107,7 @@ DESCRIPTION_ENTRY_NEGATIONS = (
 # commercial experience a mandatory requirement. Optional experience phrases
 # like "two years is a plus" are deliberately excluded from these patterns.
 MANDATORY_JUNIOR_EXPERIENCE = (
-    r"\b(?:at\s+least|minimum\s+(?:of\s+)?|min\s+|minimally\s+)"
+    r"\b(?:at\s+least|minimum(?:\s+of)?|min|minimally)\s+"
     r"(?:1|2)\s+years?\s+(?:of\s+)?(?:professional\s+|commercial\s+|work\s+)?experience\b",
     r"\b(?:[12])\s*\+\s*years?\s+(?:of\s+)?(?:professional\s+|commercial\s+|work\s+)?experience\b",
     r"\b(?:min|minimalne|alespon|nejmene)\s*\.?\s*[12]\s*"
