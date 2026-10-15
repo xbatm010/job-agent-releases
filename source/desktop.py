@@ -846,6 +846,11 @@ def application_followup_overview(records, submitted_ids=None, responses=None, n
         0 if item["bucket"] == "due" else 1 if item["bucket"] == "next_week" else 2,
         item["next_date"], item["title"].lower(),
     ))
+    # Percentages are based only on distinct confirmed submissions.
+    sent = stats["sent"]
+    stats["reply_rate"] = round(100 * stats["replies"] / sent, 1) if sent else 0.0
+    stats["interview_rate"] = round(100 * stats["interviews"] / sent, 1) if sent else 0.0
+    stats["offer_rate"] = round(100 * stats["offers"] / sent, 1) if sent else 0.0
     return stats, followups
 
 
@@ -2622,8 +2627,11 @@ class JobAgentWindow(QMainWindow):
         )
         self.response_metrics.setText(
             f"Отправлено: {stats['sent']} · Ответы: {stats['replies']}"
+            f" ({stats['reply_rate']:.1f}%)"
             f" · На этапе интервью: {stats['interviews']}"
+            f" ({stats['interview_rate']:.1f}%)"
             f" · Отказы: {stats['rejected']} · Офферы: {stats['offers']}"
+            f" ({stats['offer_rate']:.1f}%)"
         )
         self.followups_summary.setText(
             f"Требуют внимания: {stats['due']}"

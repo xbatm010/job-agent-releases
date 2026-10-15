@@ -51,6 +51,36 @@ class DesktopTests(unittest.TestCase):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
 
+    def test_response_conversion_metrics_only_count_confirmed_submissions(self):
+        records = [
+            dict(job_id="job:2000000002", title="Applied", status="SUBMITTED_MANUALLY"),
+            dict(job_id="job:2000000002", title="Duplicate", status="SUBMITTED_MANUALLY"),
+            dict(job_id="job:2000000003", title="Pending", status="READY_TO_PREPARE"),
+        ]
+        responses = {
+            "job:2000000002": {"stage": "INTERVIEW_SCHEDULED"},
+            "job:2000000003": {"stage": "OFFER"},
+        }
+        stats, _ = desktop.application_followup_overview(
+            records, submitted_ids={"job:2000000002"}, responses=responses,
+        )
+        self.assertEqual(stats["sent"], 1)
+        self.assertEqual(stats["replies"], 1)
+        self.assertEqual(stats["interviews"], 1)
+        self.assertEqual(stats["offers"], 0)
+        self.assertEqual(stats["reply_rate"], 100.0)
+        self.assertEqual(stats["interview_rate"], 100.0)
+        self.assertEqual(stats["offer_rate"], 0.0)
+
+    def test_response_conversion_metrics_handle_zero_applications(self):
+        stats, _ = desktop.application_followup_overview(
+            [], submitted_ids=set(), responses={"job:fake": {"stage": "OFFER"}},
+        )
+        self.assertEqual(stats["sent"], 0)
+        self.assertEqual(stats["reply_rate"], 0.0)
+        self.assertEqual(stats["interview_rate"], 0.0)
+        self.assertEqual(stats["offer_rate"], 0.0)
+
     def test_gmail_is_opt_in_and_does_not_modify_application_history(self):
         self.assertEqual(self.window.gmail_oauth_edit.text(), "")
         self.assertEqual(self.window._collect_settings()["gmail_oauth_client_file"], "")
@@ -297,6 +327,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(stats, dict(
             sent=4, replies=3, interviews=1, rejected=1,
             offers=1, due=2, next_week=1,
+            reply_rate=75.0, interview_rate=25.0, offer_rate=25.0,
         ))
         self.assertEqual(
             [(x["job_id"], x["bucket"]) for x in tasks],
