@@ -64,32 +64,15 @@ os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS_DIR)
 
 
 def playwright_browser_present() -> bool:
-    """
-    Playwright installs revisioned browser directories such as:
-      chromium-1243/
-      chromium_headless_shell-1243/
-    We only require at least one Chromium-family directory to exist.
-    """
-    try:
-        if not PLAYWRIGHT_BROWSERS_DIR.exists():
-            return False
-        for child in PLAYWRIGHT_BROWSERS_DIR.iterdir():
-            name = child.name.lower()
-            if child.is_dir() and (
-                name.startswith("chromium-")
-                or name.startswith("chromium_headless_shell-")
-            ):
-                return True
-    except Exception:
-        return False
-    return False
+    """Check executable files, not stale revision folders."""
+    from browser_runtime import browser_available
+    return browser_available()
 
 
 def playwright_install_command() -> str:
-    return (
-        f'PLAYWRIGHT_BROWSERS_PATH="{PLAYWRIGHT_BROWSERS_DIR}" '
-        "python -m playwright install chromium"
-    )
+    # External Python may contain a different Playwright revision than the
+    # packaged application. Do not suggest an unreliable pip command.
+    return "Install Google Chrome from https://www.google.com/chrome/ then restart Job Agent."
 
 
 def load_version_info():
@@ -2844,9 +2827,9 @@ class JobAgentWindow(QMainWindow):
         if not playwright_browser_present():
             QMessageBox.warning(
                 self,
-                "Playwright Chromium missing",
-                "Playwright Chromium is not installed in the external browser cache.\n\n"
-                f"Run this once in Terminal:\n\n{playwright_install_command()}",
+                "Browser unavailable",
+                "Neither the current Playwright Chromium nor Google Chrome is installed.\n\n"
+                f"{playwright_install_command()}",
             )
             return
 
@@ -3235,15 +3218,21 @@ class JobAgentWindow(QMainWindow):
             return
 
         if not playwright_browser_present():
-            QMessageBox.warning(
-                self,
-                "Playwright Chromium missing",
-                "Playwright Chromium is not installed in the external browser cache.\n\n"
-                f"Expected location:\n{PLAYWRIGHT_BROWSERS_DIR}\n\n"
-                "Run this once in Terminal:\n\n"
-                f"{playwright_install_command()}",
-            )
-            return
+            if settings.get("search_only", True):
+                # Discovery/HTTP scoring is usable without Chromium; the
+                # browser evidence pass will remain unverified and be skipped.
+                self._append_log(
+                    "⚠️ Browser unavailable: continuing search-only with HTTP "
+                    "evidence; weak descriptions will not be promoted."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Browser unavailable",
+                    "Preparing an employer application needs a browser.\n\n"
+                    f"{playwright_install_command()}",
+                )
+                return
 
         save_settings(settings)
         self.settings = settings
