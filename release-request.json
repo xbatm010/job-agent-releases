@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 59,
   "version": "3.0.12",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.0.12 Beta audits the five new IT Support/Manual QA APPLY recommendations observed in a successful 3.0.11 macOS search-only run. A description-derived entry-level status now requires a traceable, literal employer phrase found in vacancy-specific JobPosting structured text or a bounded vacancy section, rather than an unrelated recommendation/footer on a long portal page. Full-description mandatory 1-2+ years experience gates are still enforced even if a shorter excerpt is considered entry-level; senior, required advanced technologies, strong job evidence and familiar/practical skill guards remain in place. For each Support/QA vacancy the agent stores and shows the matched entry phrase with its source (title, vacancy page or JobPosting), and the Dashboard now distinguishes junior words in the job title from explicit no-experience text and shows role-specific preparation blockers. The evidence is stored locally only, and no user CVs or private application details enter the release. Data/BI scoring, per-track search budgets, two CVs, confirmed-submission history, browser fallback, source policy and final manual employer Submit are unchanged. 177/177 automated offline regression tests passed, including source/fake-footer checks and a Qt Dashboard rendering test. Recheck SEARCH_ONLY on the user's Mac and manually inspect each APPLY before preparation; a conservative REVIEW downgrade is expected if evidence is unverifiable.",
-  "last_published": "3.0.11",
-  "last_sha256": "8486bd43cd01bbcda6f1986cd60ca64e6d57baa6c4094a734805867abafb197f"
+  "last_published": "3.0.12",
+  "last_sha256": "456c68c628f9ba542e220ef3e7a6e8fb72ebf27d26993294d804819c5ddc34fb"
 }
