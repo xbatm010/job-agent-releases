@@ -82,10 +82,11 @@ ADVANCED_REQUIRED = (
 # marker in the title. A generic "training" benefit or mention of graduates
 # elsewhere in a full HTML page cannot by itself qualify a vacancy.
 DESCRIPTION_ENTRY_PATTERNS = (
-    r"\b(?:no|without)\s+(?:prior|previous|professional|commercial|work)\s+"
+    r"\b(?:no|without)\s+(?:(?:prior|previous|professional|commercial|work)\s+)?"
     r"experience\s+(?:is\s+)?(?:required|necessary|needed)\b",
     r"\b(?:prior|previous|professional|commercial|work)\s+experience\s+"
     r"(?:is\s+)?(?:not|isnt)\s+(?:required|necessary|needed)\b",
+    r"\bexperience\s+(?:is\s+)?(?:not|isnt)\s+(?:required|necessary|needed)\b",
     r"\b(?:graduates?\s+(?:are\s+)?welcome|welcome\s+(?:new\s+)?graduates?|"
     r"open\s+to\s+(?:new\s+)?graduates?|suitable\s+for\s+graduates?)\b",
     r"\b(?:vhodn[aeo]?\s+(?:i\s+)?pro\s+absolventy|"
@@ -119,7 +120,7 @@ MANDATORY_JUNIOR_EXPERIENCE = (
 # Broad years ranges like "1-2 years of experience" are ambiguous as to
 # mandatory vs nice-to-have: do not mark them auto-ready.
 AMBIGUOUS_EXPERIENCE = (
-    r"\b(?:1\s*(?:-|to|az)\s*2)\s+(?:years?|rok|roky|roku|let)\s+"
+    r"\b(?:1\s*(?:-|to|az)?\s+2)\s+(?:years?|rok|roky|roku|let)\s+"
     r"(?:of\s+)?(?:experience|praxe|zkusenosti)\b",
 )
 
@@ -137,12 +138,20 @@ def support_qa_entry_evidence(title, description):
     negative = any(re.search(pattern, body) for pattern in DESCRIPTION_ENTRY_NEGATIONS)
     required = any(re.search(pattern, body) for pattern in MANDATORY_JUNIOR_EXPERIENCE)
     ambiguous = any(re.search(pattern, body) for pattern in AMBIGUOUS_EXPERIENCE)
+    # Normalization strips the plus sign: inspect source for explicit 1+/2+.
+    plus_required = bool(re.search(
+        r"\b[12]\s*\+\s*(?:years?|rok(?:y|u)?|let)\s+"
+        r"(?:of\s+)?(?:experience|praxe|zkusenosti)\b",
+        str(description or ""), re.I
+    ))
     # A clear mandatory requirement or contradictory senior signal blocks
     # auto-preparation even if "Junior" is in the actual job title.
     return (
         (title_entry or positive) and not negative,
-        "title" if title_entry else "description" if positive and not negative else "none",
-        required or ambiguous,
+        ("none" if negative else
+         "title" if title_entry else
+         "description" if positive else "none"),
+        required or ambiguous or plus_required,
     )
 
 
