@@ -604,6 +604,71 @@ class DesktopTests(unittest.TestCase):
 
 
 
+    def test_historical_confirmation_overrides_stale_apply_review_and_queue(self):
+        # The screenshot had more APPLY cards than the latest run. A confirmed
+        # submission must not be counted in ready/review or manually queued.
+        submitted = self.records[1]
+        self.assertEqual(submitted["decision"], "REVIEW")
+        self.overrides["job:2000000002"] = {"decision": "MANUAL_APPLY"}
+        self.window._refresh_dashboard()
+        self.filter("APPLY")
+        self.assertEqual([r["job_id"] for r in self.window.dashboard_records],
+                         ["job:2000000001"])
+        self.filter("QUEUED")
+        self.assertEqual(len(self.window.dashboard_records), 0)
+        self.filter("Manual queue eligible")
+        self.assertEqual(len(self.window.dashboard_records), 1)
+        self.filter("SUBMITTED")
+        self.assertEqual(len(self.window.dashboard_records), 1)
+        row = self.window.dashboard_records[0]
+        self.assertEqual(row["status"], "SUBMITTED_MANUALLY")
+        # Keep original recommendation instead of rewriting the audit history.
+        self.assertEqual(row["decision"], "REVIEW")
+        self.assertEqual(
+            desktop.display_decision(row, self.overrides), "SUBMITTED"
+        )
+        self.assertEqual(self.window.filter_buttons["SUBMITTED"].text(),
+                         "Отправлены (1)")
+
+    def test_quick_response_tracking_only_for_submitted_record(self):
+        self.filter("APPLY")
+        self.window._dashboard_selection_changed()
+        self.assertTrue(self.window.track_response_btn.isHidden())
+        self.filter("SUBMITTED")
+        self.window._dashboard_selection_changed()
+        self.assertFalse(self.window.track_response_btn.isHidden())
+        self.assertTrue(self.window.track_response_btn.isEnabled())
+        self.assertIn("интервью", self.window.track_response_btn.text())
+        self.window.dashboard_detail.set_record(
+            self.window.dashboard_records[0], "SUBMITTED"
+        )
+
+    def test_employer_stage_marks_responded_but_preserves_submission(self):
+        entry = desktop.save_response_tracking(
+            "jobs.cz:2000000002", "INTERVIEW_SCHEDULED",
+            "Собеседование подтверждено", "2026-10-20 10:00"
+        )
+        self.assertEqual(entry["stage"], "INTERVIEW_SCHEDULED")
+        self.window._refresh_dashboard()
+        self.filter("RESPONDED")
+        self.assertEqual(len(self.window.dashboard_records), 1)
+        row = self.window.dashboard_records[0]
+        self.assertEqual(row["status"], "SUBMITTED_MANUALLY")
+        self.assertEqual(row["response_stage"], "INTERVIEW_SCHEDULED")
+        self.assertIn("Собеседование назначено",
+                      self.window.response_summary.text())
+        self.assertEqual(self.window.response_metrics.text().split(" · ")[0],
+                         "Отправлено: 1")
+        self.assertFalse(desktop.HISTORY_FILE.exists())
+
+    def test_sent_cards_listed_after_new_openings(self):
+        self._show = self.window._refresh_dashboard
+        self._show()
+        ids = [record["job_id"] for record in self.window.dashboard_all_records]
+        self.assertEqual(ids[-1], "job:2000000002")
+        self.assertEqual(ids[0], "job:2000000001")
+
+
 class VacancyCleanupTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -642,6 +707,31 @@ class VacancyCleanupTests(unittest.TestCase):
             writer.writeheader()
             writer.writerow({"job_id": jid, "title": "Preserved application",
                              "url": "https://www.jobs.cz/rpd/2000000001/", "status": status})
+
+    def test_company_survives_empty_later_snapshot(self):
+        first = self.row("job:2000000099", 12, company="2. lékařská fakulta",
+                         company_source="browser_meta")
+        second = self.row("job:2000000099", 1, company="")
+        self.write_records(first, second)
+        loaded = desktop.load_vacancy_records()
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0]["company"], "2. lékařská fakulta")
+        self.assertEqual(loaded[0]["company_source"], "browser_meta")
+
+    def test_history_company_fills_missing_snapshot_without_overwriting_good_name(self):
+        row = self.row("job:2000000001", 1, company="")
+        self.write_records(row)
+        with self.history.open("w", encoding="utf-8", newline="") as out:
+            writer = csv.DictWriter(out, fieldnames=["job_id", "title", "url", "status", "company"])
+            writer.writeheader()
+            writer.writerow({"job_id": "jobs.cz:2000000001", "title": "Example job",
+                             "url": "https://www.jobs.cz/rpd/2000000001/",
+                             "status": "SUBMITTED_MANUALLY", "company": "iPodnik cloud s.r.o."})
+        loaded = desktop.load_vacancy_records()
+        self.assertEqual(loaded[0]["company"], "iPodnik cloud s.r.o.")
+        self.assertEqual(loaded[0]["company_source"], "submitted_history")
+        self.assertEqual(loaded[0]["status"], "REVIEW_PENDING")
+
 
     def test_old_vacancy_selection_protects_recent_submitted_favorite_and_queue(self):
         records = [
