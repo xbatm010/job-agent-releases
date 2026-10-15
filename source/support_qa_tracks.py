@@ -37,14 +37,14 @@ ENTRY_PATTERNS = (
     r"1st line|absolvent|stazista|staz|bez praxe)\b",
 )
 SUPPORT_SIGNAL_PATTERNS = {
-    "troubleshooting": r"\b(?:troubleshoot|diagnos|resolv(?:e|ing)|problem solving|reseni problem|reseni incident)\b",
+    "troubleshooting": r"\b(?:troubleshoot(?:ing|er|s)?|diagnos(?:e|is|tic|ing)?|resolv(?:e|ing)|problem solving|reseni problemu?|reseni incidentu?)\b",
     "incident_tickets": r"\b(?:ticket(?:ing|s)?|incident|service ?desk|help ?desk|jira|servicenow)\b",
     "technical_support": r"\b(?:windows|macos|operating system|hardware|software support|it support|technicka podpora)\b",
     "user_communication": r"\b(?:user support|uzivatelsk|customer communication|customer support|technical documentation|dokumentace)\b",
     "basic_network": r"\b(?:dns|tcp/?ip|network|sitov|vpn|remote desktop)\b",
 }
 QA_SIGNAL_PATTERNS = {
-    "manual_testing": r"\b(?:manual test|manualni test|rucni test|functional test|funkcni test)\b",
+    "manual_testing": r"\b(?:manual test(?:ing|s|er)?|manualni testovani|manualni testy?|rucni testovani|rucni testy?|functional test(?:ing|s)?|funkcni testovani|funkcni testy?)\b",
     "regression": r"\b(?:regression|regresni)\b",
     "test_cases": r"\b(?:test cas(?:e|es)|testovaci scenar|test plan|test scenario)\b",
     "defect_tracking": r"\b(?:bug|defect|issue track|reproduc|jira)\b",
@@ -78,6 +78,83 @@ ADVANCED_REQUIRED = (
 )
 
 
+# Only explicit, affirmative employer statements may replace an entry-level
+# marker in the title. A generic "training" benefit or mention of graduates
+# elsewhere in a full HTML page cannot by itself qualify a vacancy.
+DESCRIPTION_ENTRY_PATTERNS = (
+    r"\b(?:no|without)\s+(?:(?:prior|previous|professional|commercial|work)\s+){0,2}"
+    r"experience\s+(?:is\s+)?(?:required|necessary|needed)\b",
+    r"\b(?:prior|previous|professional|commercial|work)\s+experience\s+"
+    r"(?:is\s+)?(?:not|isnt)\s+(?:required|necessary|needed)\b",
+    r"\bexperience\s+(?:is\s+)?(?:not|isnt)\s+(?:required|necessary|needed)\b",
+    r"\b(?:graduates?\s+(?:are\s+)?welcome|welcome\s+(?:new\s+)?graduates?|"
+    r"open\s+to\s+(?:new\s+)?graduates?|suitable\s+for\s+graduates?)\b",
+    r"\b(?:vhodn[aeo]?\s+(?:i\s+)?pro\s+absolventy|"
+    r"vitame\s+(?:i\s+)?absolventy|"
+    r"absolventy\s+radi\s+zaucime)\b",
+    r"\b(?:praxe\s+neni\s+(?:nutna|podminkou|vyzadovana|potreba)|"
+    r"predchozi\s+praxe\s+neni\s+(?:nutna|vyzadovana)|"
+    r"neni\s+(?:nutna|vyzadovana)\s+(?:predchozi\s+)?praxe|"
+    r"bez\s+(?:predchozi\s+)?praxe)\b",
+)
+# A negative phrase is never positive evidence for entry level.
+DESCRIPTION_ENTRY_NEGATIONS = (
+    r"\b(?:not\s+suitable\s+for|not\s+open\s+to)\s+graduates?\b",
+    r"\b(?:nevhodne\s+pro|neni\s+vhodne\s+pro)\s+absolventy\b",
+    r"\b(?:graduates?\s+not\s+accepted|absolventy\s+neprijimame)\b",
+)
+# Even an explicitly "graduate-friendly" ad must stay REVIEW when it makes
+# commercial experience a mandatory requirement. Optional experience phrases
+# like "two years is a plus" are deliberately excluded from these patterns.
+MANDATORY_JUNIOR_EXPERIENCE = (
+    r"\b(?:at\s+least|minimum(?:\s+of)?|min|minimally)\s+"
+    r"(?:1|2)\s+years?\s+(?:of\s+)?(?:professional\s+|commercial\s+|work\s+)?experience\b",
+    r"\b(?:[12])\s*\+\s*years?\s+(?:of\s+)?(?:professional\s+|commercial\s+|work\s+)?experience\b",
+    r"\b(?:min|minimalne|alespon|nejmene)\s*\.?\s*[12]\s*"
+    r"(?:rok|roky|roku|let)\s+(?:praxe|zkusenosti)\b",
+    r"\b(?:pozadujeme|vyzadujeme|nutna|nutne)\s+(?:alespon\s+)?"
+    r"[12]\s*(?:rok|roky|roku|let)\s+(?:praxe|zkusenosti)\b",
+    r"\b(?:must\s+have|required|essential|requirements?)\s+"
+    r"(?:\w+\s+){0,5}[12]\s+(?:years?\s+(?:of\s+)?)experience\b",
+)
+# Broad years ranges like "1-2 years of experience" are ambiguous as to
+# mandatory vs nice-to-have: do not mark them auto-ready.
+AMBIGUOUS_EXPERIENCE = (
+    r"\b(?:1\s*(?:-|to|az)?\s+2)\s+(?:years?|rok|roky|roku|let)\s+"
+    r"(?:of\s+)?(?:experience|praxe|zkusenosti)\b",
+)
+
+
+def support_qa_entry_evidence(title, description):
+    """Return (entry_ok, basis, mandatory_1_2_years).
+
+    Title markers are legacy behavior. Description promotion needs an explicit
+    no-experience / graduate welcome statement, not just a generic benefit.
+    """
+    name = normalize_title(title)
+    body = normalize_title(description)
+    title_entry = any(re.search(pattern, name) for pattern in ENTRY_PATTERNS)
+    positive = any(re.search(pattern, body) for pattern in DESCRIPTION_ENTRY_PATTERNS)
+    negative = any(re.search(pattern, body) for pattern in DESCRIPTION_ENTRY_NEGATIONS)
+    required = any(re.search(pattern, body) for pattern in MANDATORY_JUNIOR_EXPERIENCE)
+    ambiguous = any(re.search(pattern, body) for pattern in AMBIGUOUS_EXPERIENCE)
+    # Normalization strips the plus sign: inspect source for explicit 1+/2+.
+    plus_required = bool(re.search(
+        r"\b[12]\s*\+\s*(?:years?|rok(?:y|u)?|let)\s+"
+        r"(?:of\s+)?(?:experience|praxe|zkusenosti)\b",
+        str(description or ""), re.I
+    ))
+    # A clear mandatory requirement or contradictory senior signal blocks
+    # auto-preparation even if "Junior" is in the actual job title.
+    return (
+        (title_entry or positive) and not negative,
+        ("none" if negative else
+         "title" if title_entry else
+         "description" if positive else "none"),
+        required or ambiguous or plus_required,
+    )
+
+
 def support_qa_track(title):
     """Return 'support', 'qa' or None using the real vacancy title only."""
     normalized = normalize_title(title)
@@ -104,9 +181,11 @@ def support_qa_assessment(job, hard_experience=False):
         if re.search(pattern, description)
     ]
     matched = [name for name in signals if name in CANDIDATE_FAMILIAR[track]]
-    entry = any(re.search(pattern, normalize_title(title)) for pattern in ENTRY_PATTERNS)
-    # Regular unspecified positions may be shortlisted for human evaluation,
-    # but only clearly junior adverts can be marked ready for preparation.
+    entry, entry_basis, required_junior_experience = support_qa_entry_evidence(
+        title, job.get("description") or ""
+    )
+    # A non-Junior title may now qualify only with explicit, affirmative
+    # graduate/no-experience language in the verified vacancy description.
     advanced_required = any(re.search(pattern, description) for pattern in ADVANCED_REQUIRED)
     blockers = []
     if evidence != "strong":
@@ -115,6 +194,8 @@ def support_qa_assessment(job, hard_experience=False):
         blockers.append("experience 3+ years requirement")
     if not entry:
         blockers.append("junior/trainee/L1 marker absent")
+    if required_junior_experience:
+        blockers.append("1-2 years experience requirement or ambiguous range")
     if len(signals) < 2:
         blockers.append("fewer than 2 independent role signals")
     if len(matched) < 2:
@@ -168,10 +249,15 @@ def support_qa_assessment(job, hard_experience=False):
         "soft_experience_penalty": 0,
         "verified_target_promotion": False,
         "entry_role": entry,
+        "entry_evidence": entry_basis,
+        "junior_experience_requirement": required_junior_experience,
         "confidence": {"strong": "high", "medium": "medium", "weak": "low"}.get(evidence, "low"),
         "evidence_verified": evidence == "strong",
         "reasons": [
-            f"track={track}", f"entry_role={entry}", f"evidence={evidence}",
+            f"track={track}", f"entry_role={entry}",
+            f"entry_evidence={entry_basis}",
+            f"junior_experience_requirement={required_junior_experience}",
+            f"evidence={evidence}",
             "track_signals=" + (",".join(signals) or "none"),
             "familiar_signals=" + (",".join(matched) or "none"),
             "track_apply_blockers=" + ("; ".join(blockers) or "none"),
