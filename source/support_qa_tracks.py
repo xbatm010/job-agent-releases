@@ -193,7 +193,7 @@ def support_qa_assessment(job, hard_experience=False):
     if hard_experience:
         blockers.append("experience 3+ years requirement")
     if not entry:
-        blockers.append("junior/trainee/L1 marker absent and no explicit entry-level requirements")
+        blockers.append("junior/trainee/L1 marker absent")
     if required_junior_experience:
         blockers.append("1-2 years experience requirement or ambiguous range")
     if len(signals) < 2:
