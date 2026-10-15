@@ -1545,6 +1545,15 @@ class JobAgentWindow(QMainWindow):
         self.response_summary.setWordWrap(True)
         self.response_summary.hide()
         detail_layout.addWidget(self.response_summary)
+        self.track_response_btn = QPushButton("Отметить ответ работодателя / интервью")
+        self.track_response_btn.setObjectName("Outline")
+        self.track_response_btn.setToolTip(
+            "Вручную отметить ответ, назначенное интервью, отказ или предложение. "
+            "Статус подтверждённой отправки не изменится."
+        )
+        self.track_response_btn.clicked.connect(self._edit_response_tracking)
+        self.track_response_btn.hide()
+        detail_layout.addWidget(self.track_response_btn)
         dash_buttons = QGridLayout()
         dash_buttons.setSpacing(10)
         self.detail_buttons_layout = dash_buttons
@@ -2338,6 +2347,7 @@ class JobAgentWindow(QMainWindow):
             self.prepare_now_btn.setEnabled(False)
             self.more_job_btn.setEnabled(False)
             self.response_summary.hide()
+            self.track_response_btn.hide()
             self.response_action.setEnabled(False)
             return
         overrides = load_job_overrides()
@@ -2362,8 +2372,10 @@ class JobAgentWindow(QMainWindow):
                 summary += f" · Заметка: {note[:120]}" + ("…" if len(note) > 120 else "")
             self.response_summary.setText(summary)
             self.response_summary.show()
+            self.track_response_btn.setVisible(True)
         else:
             self.response_summary.hide()
+            self.track_response_btn.hide()
         supported = self._application_source_supported(record)
         self.open_job_btn.setEnabled(bool(record.get("url")))
         self.more_job_btn.setEnabled(True)
@@ -2402,6 +2414,7 @@ class JobAgentWindow(QMainWindow):
             self.detail_actions[index].setEnabled(not running and not terminal and not inactive)
         self.prepare_now_btn.setEnabled(self.prepare_now_btn.isEnabled() and not inactive)
         self.response_action.setEnabled(terminal and not running and not inactive)
+        self.track_response_btn.setEnabled(terminal and not running and not inactive)
         self.detail_actions[0].setEnabled(
             not running and not terminal and not inactive and supported
             and record.get("decision") == "REVIEW"
@@ -2427,14 +2440,11 @@ class JobAgentWindow(QMainWindow):
         ):
             return False
 
-        jid = str(record.get("job_id", ""))
+        jid = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
         override = str(
             overrides.get(jid, {}).get("decision", "")
         ).upper().strip()
-        decision = override or str(record.get("decision", "")).upper().strip()
-        display_decision = "QUEUED" if override == "MANUAL_APPLY" else decision
-        if record.get("status") in TERMINAL_STATUSES:
-            display_decision = "SUBMITTED"
+        effective = display_decision(record, overrides)
         status = str(record.get("status", "")).upper().strip()
 
         selected = self.dashboard_decision_filter.currentData() or "All"
@@ -2447,17 +2457,17 @@ class JobAgentWindow(QMainWindow):
         if selected == "All":
             return True
         if selected == "SUBMITTED":
-            return status in TERMINAL_STATUSES
+            return effective == "SUBMITTED"
         if selected == "RESPONDED":
             return (
-                status in TERMINAL_STATUSES
+                effective == "SUBMITTED"
                 and record.get("response_stage", "WAITING") not in {"WAITING", ""}
             )
         if selected == "ATTENTION":
             return vacancy_needs_attention(record)
         if selected == "Manual queue eligible":
-            return display_decision in {"REVIEW", "QUEUED"}
-        return display_decision == selected
+            return effective in {"REVIEW", "QUEUED"}
+        return effective == selected
 
     def _refresh_dashboard(self):
         selected = self._selected_dashboard_record()
@@ -2469,9 +2479,15 @@ class JobAgentWindow(QMainWindow):
         for record in self.dashboard_all_records:
             canonical = canonical_local_job_id(record.get("job_id", ""), record.get("url", ""))
             if canonical in submitted_ids:
+                # History is authoritative: keep the original decision/score
+                # for audit, but never redisplay this job as APPLY or REVIEW.
                 record["status"] = "SUBMITTED_MANUALLY"
-                record["decision"] = "APPLY"
             record["response_stage"] = responses.get(canonical, {}).get("stage", "WAITING")
+        # Current opportunities first, sent applications still accessible via
+        # the Submitted tab. Do not delete or rewrite historical snapshots.
+        self.dashboard_all_records.sort(
+            key=lambda item: display_decision(item, overrides) == "SUBMITTED"
+        )
         self.dashboard_records = [r for r in self.dashboard_all_records if self._dashboard_record_matches_filters(r, overrides)]
         self.dashboard_table.blockSignals(True)
         self.dashboard_table.setRowCount(len(self.dashboard_records))
