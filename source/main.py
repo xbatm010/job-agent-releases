@@ -457,11 +457,6 @@ def browser_evidence_key(job):
     ])
 
 def dedupe_key(job):
-    canonical = canonical_history_key(job)
-    # Alma numeric IDs identify the same posting across Jobs.cz and Prace.cz,
-    # even when one listing is missing employer or location metadata.
-    if canonical.startswith("job:"):
-        return canonical
     company = normalize_key_text(job.get("company", ""))
     title = normalize_key_text(job.get("actual_title") or job.get("title", ""))
     location = normalize_key_text(job.get("location", ""))
@@ -8196,16 +8191,35 @@ async def main():
     # This pass is read-only: no application controls are clicked.
     enriched = await browser_recover_weak_evidence(enriched)
 
-    # Cross-site semantic dedup: same normalized employer + title + location.
-    # Preserve an application-capable source first, then prefer stronger
-    # evidence, with Jobs.cz as the tie-breaker among otherwise equal records.
+    # First unify shared numeric Alma IDs across Jobs.cz and Prace.cz,
+    # even when the second portal has missing company/location metadata.
+    # Then retain the original semantic dedupe for different IDs with
+    # identical employer and title.
+    identity_groups = {}
+    for index, job in enumerate(enriched):
+        canonical = canonical_history_key(job)
+        identity_key = canonical if canonical.startswith("job:") else f"row:{index}"
+        identity_groups.setdefault(identity_key, []).append(job)
+    unique_identity = []
+    identity_duplicates = 0
+    for group in identity_groups.values():
+        if len(group) > 1:
+            identity_duplicates += 1
+        group.sort(key=cross_site_dedupe_preference)
+        keep = group[0]
+        keep["duplicate_sources"] = sorted({
+            g.get("source", "") for g in group if g.get("source")
+        })
+        unique_identity.append(keep)
+
+    # Semantic dedup preserves same-company/title safety for distinct IDs.
     groups = {}
-    for job in enriched:
+    for job in unique_identity:
         key = dedupe_key(job)
         groups.setdefault(key, []).append(job)
 
     deduped = []
-    duplicate_groups = 0
+    duplicate_groups = identity_duplicates
     for key, group in groups.items():
         if len(group) > 1:
             duplicate_groups += 1
@@ -8213,7 +8227,9 @@ async def main():
         group.sort(key=cross_site_dedupe_preference)
         keep = group[0]
         keep["duplicate_sources"] = sorted({
-            g.get("source", "") for g in group if g.get("source")
+            source for g in group for source in (
+                g.get("duplicate_sources") or [g.get("source", "")]
+            ) if source
         })
         deduped.append(keep)
 
