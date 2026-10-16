@@ -457,6 +457,11 @@ def browser_evidence_key(job):
     ])
 
 def dedupe_key(job):
+    canonical = canonical_history_key(job)
+    # Alma numeric IDs identify the same posting across Jobs.cz and Prace.cz,
+    # even when one listing is missing employer or location metadata.
+    if canonical.startswith("job:"):
+        return canonical
     company = normalize_key_text(job.get("company", ""))
     title = normalize_key_text(job.get("actual_title") or job.get("title", ""))
     location = normalize_key_text(job.get("location", ""))
