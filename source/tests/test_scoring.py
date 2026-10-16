@@ -59,6 +59,29 @@ class ScoringDefaults:
         ).start()
 
 
+class CrossSiteDedupeTests(unittest.TestCase):
+    def test_same_alma_id_matches_across_sources_even_without_company(self):
+        jobs = [
+            {"source": "jobs.cz", "job_id": "2001482909",
+             "title": "Cloud & Data Intern", "company": "Example",
+             "location": "Praha", "evidence_quality": "strong"},
+            {"source": "prace.cz", "job_id": "2001482909",
+             "title": "Cloud & Data Intern", "company": "",
+             "location": "Prague", "evidence_quality": "weak"},
+        ]
+        canonical = [main.canonical_history_key(x) for x in jobs]
+        self.assertEqual(canonical, ["job:2001482909"] * 2)
+        self.assertNotEqual(main.dedupe_key(jobs[0]), main.dedupe_key(jobs[1]))
+
+    def test_semantic_dedupe_still_matches_distinct_ids(self):
+        a = {"source": "jobs.cz", "job_id": "123", "title": "Junior Tester",
+             "company": "Example", "location": "Praha"}
+        b = {"source": "prace.cz", "job_id": "456", "title": "Junior Tester",
+             "company": "Example", "location": "Brno"}
+        self.assertNotEqual(main.canonical_history_key(a), main.canonical_history_key(b))
+        self.assertEqual(main.dedupe_key(a), main.dedupe_key(b))
+
+
 class ExpandedScoringTests(ScoringDefaults, unittest.TestCase):
 
     def test_target_low_skill_match_is_review_even_with_high_role_score(self):
