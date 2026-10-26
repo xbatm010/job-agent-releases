@@ -1,0 +1,19 @@
+# Reviewed top-level source files persisted after publishing a macOS release.
+# Include every source/*.py module here. Missing modules fail before packaging.
+desktop.py
+desktop_theme.py
+desktop_widgets.py
+main.py
+updater.py
+gmail_responses.py
+resume_routes.py
+support_qa_tracks.py
+browser_runtime.py
+fit_intelligence.py
+requirements.txt
+requirements-desktop.txt
+.env.example
+version.json
+SOURCE_README.md
+GMAIL_SETUP.md
+update_manifest.example.json
