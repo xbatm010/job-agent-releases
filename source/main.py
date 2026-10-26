@@ -2614,6 +2614,34 @@ def show_track_counts(stage, jobs, decisions=None):
     )
 
 
+def review_quality_tiebreak(job):
+    """Evidence-based tie breaker ONLY; never changes APPLY eligibility.
+
+    Support and QA REVIEW scores are deliberately capped at 69. Without a
+    secondary rank, many equally scored vacancies inherit arbitrary HTTP
+    discovery order, including ones with stronger experience blockers.
+    """
+    blockers = {
+        str(blocker).strip()
+        for name in ("target_apply_blockers", "expanded_apply_blockers")
+        for blocker in (job.get(name) or [])
+        if str(blocker).strip()
+    }
+    safe_locations = {
+        "prague_area", "prague_area_mentioned",
+        "full_remote", "location_gate_disabled",
+    }
+    return (
+        bool(job.get("hard_experience"))
+        or bool(job.get("junior_experience_requirement")),
+        str(job.get("location_gate", "")).lower() not in safe_locations,
+        str(job.get("evidence_quality", "")).lower() != "strong",
+        len(blockers),
+        -int(job.get("candidate_fit") or 0),
+        not bool(job.get("entry_role")),
+    )
+
+
 def safe_manual_review_candidates(ranked, limit=3):
     """Present good REVIEW jobs without bypassing any automatic APPLY guard.
 
@@ -2635,7 +2663,7 @@ def safe_manual_review_candidates(ranked, limit=3):
     ]
     ordered = sorted(candidates, key=lambda job: (
         -int(job.get("score") or 0),
-        -int(job.get("candidate_fit") or 0),
+        *review_quality_tiebreak(job),
     ))
     limit = max(0, int(limit))
     if not SEARCH_SUPPORT_QA or limit < 2:
@@ -2718,6 +2746,7 @@ def select_review_shortlist(ranked, limit):
             decision == "SKIP",
             decision != "APPLY",
             -int(job.get("score") or 0),
+            *review_quality_tiebreak(job),
         )
 
     ordered = sorted(ranked, key=priority)
