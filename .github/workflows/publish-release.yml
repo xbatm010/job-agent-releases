@@ -116,6 +116,36 @@ jobs:
           test -f buildsrc/version.json
           test -f buildsrc/assets/job_agent_icon.svg
 
+      - name: Validate release source module inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          manifest = Path(".github/release-source-allowlist.txt")
+          if not manifest.is_file():
+              raise SystemExit("Missing release source allowlist")
+          allowlist = {
+              line.strip() for line in manifest.read_text(encoding="utf-8").splitlines()
+              if line.strip() and not line.lstrip().startswith("#")
+          }
+          for item in allowlist:
+              if (not re.fullmatch(r"[A-Za-z0-9_.-]+", item)
+                      or item.startswith("..")):
+                  raise SystemExit(f"Unsafe release source entry: {item!r}")
+          actual = {p.name for p in Path("buildsrc").glob("*.py")}
+          missing = sorted(actual - allowlist)
+          if missing:
+              raise SystemExit(
+                  "Release would delete imported source modules: "
+                  + ", ".join(missing)
+                  + ". Review and update .github/release-source-allowlist.txt."
+              )
+          print(f"Release source inventory verified: {len(actual)} Python modules.")
+          PY
+
       - name: Privacy guard
         shell: bash
         run: |
@@ -655,13 +685,17 @@ jobs:
           rm -rf source
           mkdir -p source
 
-          # Keep every reviewed Gmail module and setup guide when publishing.
-          # Release source is a sanitized allowlist; update it for new modules.
-          for f in desktop.py desktop_theme.py desktop_widgets.py main.py updater.py gmail_responses.py resume_routes.py support_qa_tracks.py browser_runtime.py requirements.txt requirements-desktop.txt .env.example version.json SOURCE_README.md GMAIL_SETUP.md update_manifest.example.json; do
+          # Persist only reviewed source entries, using the very same
+          # allowlist validated BEFORE packaging. Never silently delete new
+          # imported modules on a successful release.
+          while IFS= read -r f || [ -n "$f" ]; do
+            case "$f" in
+              ""|\#*) continue ;;
+            esac
             if [ -f "buildsrc/$f" ]; then
               cp "buildsrc/$f" "source/$f"
             fi
-          done
+          done < .github/release-source-allowlist.txt
 
           # Fail the release instead of silently dropping an imported module
           # from the persisted source. The next update relies on this source.
@@ -674,6 +708,12 @@ jobs:
           fi
           if grep -Eq '^from support_qa_tracks import' buildsrc/main.py; then
             test -s source/support_qa_tracks.py
+          fi
+          if grep -Eq '^from fit_intelligence import' buildsrc/main.py; then
+            test -s source/fit_intelligence.py
+          fi
+          if grep -Eq '^from fit_intelligence import' buildsrc/desktop.py; then
+            test -s source/fit_intelligence.py
           fi
 
           if [ -d "buildsrc/tests" ]; then
