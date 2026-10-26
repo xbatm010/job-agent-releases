@@ -136,7 +136,7 @@ ALLOW_FULL_REMOTE_OUTSIDE_PRAGUE = os.getenv(
 ).lower() == "true"
 BLOCKED_LOCATION_TERMS = [x.strip() for x in os.getenv(
     "BLOCKED_LOCATION_TERMS",
-    "Brno,Ostrava,Olomouc,Plzeň,Plzen,České Budějovice,Ceske Budejovice,Hradec Králové,Hradec Kralove,Pardubice,Zlín,Zlin,Liberec"
+    "Brno,Ostrava,Olomouc,Plzeň,Plzen,České Budějovice,Ceske Budejovice,Hradec Králové,Hradec Kralove,Pardubice,Zlín,Zlin,Liberec,Jihlava,Vysočina,Vysocina"
 ).split(",") if x.strip()]
 
 BASE = "https://www.jobs.cz"
@@ -947,6 +947,15 @@ def valid_company(name, source="generic"):
     if normalize_key_text(name) in {normalize_key_text(x) for x in location_names}:
         return False
 
+    # Contract/work-mode badges are not employer identities. Match the full
+    # label so brands containing these words are still allowed.
+    if normalize_key_text(name) in {
+        "full time", "part time", "fulltime", "parttime",
+        "plny uvazek", "castecny uvazek", "zkraceny uvazek",
+        "pracovni pomer", "h pp", "brigada", "internship",
+    }:
+        return False
+
     # Site navigation and control labels can leak into employer logo alt/text.
     # Match the WHOLE label: legitimate brands such as "Home Credit" and
     # "ČEZ Distribuce" must not be rejected because they contain a word.
@@ -1220,8 +1229,10 @@ def enrich_job(job, session):
         if structured:
             org = structured.get("hiringOrganization")
             if isinstance(org, dict) and org.get("name") and not job.get("company"):
-                job["company"] = clean(str(org.get("name")))
-                job["company_source"] = "http_jsonld"
+                company = clean(str(org.get("name")))
+                if valid_company(company, "structured"):
+                    job["company"] = company
+                    job["company_source"] = "http_jsonld"
 
             structured_loc = jsonld_location(structured)
             if structured_loc and not job.get("location"):
@@ -3237,14 +3248,14 @@ def merge_browser_evidence(
         job["actual_title"] = h1_title
 
     # Rendered/structured company.
-    if browser_company:
+    if browser_company and valid_company(browser_company, "browser_render"):
         job["company"] = browser_company
         job["company_source"] = browser_company_source or "browser_render"
     elif structured:
         org = structured.get("hiringOrganization")
         if isinstance(org, dict) and org.get("name"):
             company = clean(str(org.get("name")))
-            if company:
+            if valid_company(company, "structured"):
                 job["company"] = company
                 job["company_source"] = "browser_jsonld"
 
