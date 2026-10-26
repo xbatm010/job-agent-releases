@@ -5,11 +5,15 @@ on:
     paths:
       - 'source/**'
       - '.github/workflows/offline-tests.yml'
+      - '.github/workflows/publish-release.yml'
+      - '.github/release-source-allowlist.txt'
   push:
     branches: [main]
     paths:
       - 'source/**'
       - '.github/workflows/offline-tests.yml'
+      - '.github/workflows/publish-release.yml'
+      - '.github/release-source-allowlist.txt'
 
 permissions:
   contents: read
