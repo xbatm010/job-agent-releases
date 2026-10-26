@@ -136,7 +136,7 @@ ALLOW_FULL_REMOTE_OUTSIDE_PRAGUE = os.getenv(
 ).lower() == "true"
 BLOCKED_LOCATION_TERMS = [x.strip() for x in os.getenv(
     "BLOCKED_LOCATION_TERMS",
-    "Brno,Ostrava,Olomouc,Plzeň,Plzen,České Budějovice,Ceske Budejovice,Hradec Králové,Hradec Kralove,Pardubice,Zlín,Zlin,Liberec"
+    "Brno,Ostrava,Olomouc,Plzeň,Plzen,České Budějovice,Ceske Budejovice,Hradec Králové,Hradec Kralove,Pardubice,Zlín,Zlin,Liberec,Jihlava,Vysočina,Vysocina"
 ).split(",") if x.strip()]
 
 BASE = "https://www.jobs.cz"
@@ -947,6 +947,15 @@ def valid_company(name, source="generic"):
     if normalize_key_text(name) in {normalize_key_text(x) for x in location_names}:
         return False
 
+    # Contract/work-mode badges are not employer identities. Match the full
+    # label so brands containing these words are still allowed.
+    if normalize_key_text(name) in {
+        "full time", "part time", "fulltime", "parttime",
+        "plny uvazek", "castecny uvazek", "zkraceny uvazek",
+        "pracovni pomer", "h pp", "brigada", "internship",
+    }:
+        return False
+
     # Site navigation and control labels can leak into employer logo alt/text.
     # Match the WHOLE label: legitimate brands such as "Home Credit" and
     # "ČEZ Distribuce" must not be rejected because they contain a word.
@@ -1220,8 +1229,10 @@ def enrich_job(job, session):
         if structured:
             org = structured.get("hiringOrganization")
             if isinstance(org, dict) and org.get("name") and not job.get("company"):
-                job["company"] = clean(str(org.get("name")))
-                job["company_source"] = "http_jsonld"
+                company = clean(str(org.get("name")))
+                if valid_company(company, "structured"):
+                    job["company"] = company
+                    job["company_source"] = "http_jsonld"
 
             structured_loc = jsonld_location(structured)
             if structured_loc and not job.get("location"):
@@ -2614,6 +2625,34 @@ def show_track_counts(stage, jobs, decisions=None):
     )
 
 
+def review_quality_tiebreak(job):
+    """Evidence-based tie breaker ONLY; never changes APPLY eligibility.
+
+    Support and QA REVIEW scores are deliberately capped at 69. Without a
+    secondary rank, many equally scored vacancies inherit arbitrary HTTP
+    discovery order, including ones with stronger experience blockers.
+    """
+    blockers = {
+        str(blocker).strip()
+        for name in ("target_apply_blockers", "expanded_apply_blockers")
+        for blocker in (job.get(name) or [])
+        if str(blocker).strip()
+    }
+    safe_locations = {
+        "prague_area", "prague_area_mentioned",
+        "full_remote", "location_gate_disabled",
+    }
+    return (
+        bool(job.get("hard_experience"))
+        or bool(job.get("junior_experience_requirement")),
+        str(job.get("location_gate", "")).lower() not in safe_locations,
+        str(job.get("evidence_quality", "")).lower() != "strong",
+        len(blockers),
+        -int(job.get("candidate_fit") or 0),
+        not bool(job.get("entry_role")),
+    )
+
+
 def safe_manual_review_candidates(ranked, limit=3):
     """Present good REVIEW jobs without bypassing any automatic APPLY guard.
 
@@ -2635,7 +2674,7 @@ def safe_manual_review_candidates(ranked, limit=3):
     ]
     ordered = sorted(candidates, key=lambda job: (
         -int(job.get("score") or 0),
-        -int(job.get("candidate_fit") or 0),
+        *review_quality_tiebreak(job),
     ))
     limit = max(0, int(limit))
     if not SEARCH_SUPPORT_QA or limit < 2:
@@ -2718,6 +2757,7 @@ def select_review_shortlist(ranked, limit):
             decision == "SKIP",
             decision != "APPLY",
             -int(job.get("score") or 0),
+            *review_quality_tiebreak(job),
         )
 
     ordered = sorted(ranked, key=priority)
@@ -3208,14 +3248,14 @@ def merge_browser_evidence(
         job["actual_title"] = h1_title
 
     # Rendered/structured company.
-    if browser_company:
+    if browser_company and valid_company(browser_company, "browser_render"):
         job["company"] = browser_company
         job["company_source"] = browser_company_source or "browser_render"
     elif structured:
         org = structured.get("hiringOrganization")
         if isinstance(org, dict) and org.get("name"):
             company = clean(str(org.get("name")))
-            if company:
+            if valid_company(company, "structured"):
                 job["company"] = company
                 job["company_source"] = "browser_jsonld"
 
