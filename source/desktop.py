@@ -1007,7 +1007,7 @@ def child_env(settings: dict) -> dict:
         "Brno,Ostrava,Olomouc,Plzeň,Plzen,"
         "České Budějovice,Ceske Budejovice,"
         "Hradec Králové,Hradec Kralove,Pardubice,"
-        "Zlín,Zlin,Liberec"
+        "Zlín,Zlin,Liberec,Jihlava,Vysočina,Vysocina"
     )
 
     return {
