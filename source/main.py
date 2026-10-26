@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 from browser_runtime import BrowserUnavailable, launch_chromium
+from fit_intelligence import summarize_fit, save_fit_report, format_fit_summary
 
 load_dotenv()
 
@@ -8301,6 +8302,7 @@ async def main():
     scored_count = len(ranked)
     show_track_counts("Scored (all decisions)", ranked)
     show_track_counts("Scored eligible (APPLY/REVIEW)", ranked, {"APPLY", "REVIEW"})
+    all_scored = ranked
     ranked = select_review_shortlist(ranked, MAX_JOBS_TO_REVIEW)
     show_track_counts("Final shortlist", ranked)
     show_track_counts("Final ready (APPLY)", ranked, {"APPLY"})
@@ -8308,6 +8310,30 @@ async def main():
         f"🎯 Post-evidence shortlist: {len(ranked)} of {scored_count} "
         "scored candidates retained"
     )
+
+    # Only aggregate counts leave the scoring pipeline; never persist raw
+    # vacancy descriptions or personal candidate details in this report.
+    fit_report = summarize_fit(
+        all_scored,
+        {
+            "discovered": len(jobs),
+            "selected_for_enrichment": len(fresh),
+            "deduplicated": len(deduped),
+            "scored": scored_count,
+            "shortlisted": len(ranked),
+        },
+        track_fn=job_search_track,
+    )
+    print("📊 " + format_fit_summary(fit_report))
+    for track_name, decisions in fit_report["by_track"].items():
+        print(
+            f"   {track_name}: APPLY={decisions['APPLY']} "
+            f"REVIEW={decisions['REVIEW']} SKIP={decisions['SKIP']}"
+        )
+    try:
+        save_fit_report(fit_report, STATE_DIR / "fit_report.json")
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"⚠️ Fit Intelligence report could not be saved: {type(exc).__name__}")
 
     Path("jobs.json").write_text(
         json.dumps(ranked, ensure_ascii=False, indent=2),
