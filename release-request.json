@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 64,
   "version": "3.1.1",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.1.1 Beta is a release-integrity hotfix. The 3.1.0 automated publisher inadvertently removed the imported fit_intelligence.py file from the main branch while successfully producing the macOS app. This release restores that reviewed module, moves source persistence to a reviewed allowlist, and validates all top-level Python modules before macOS packaging so future releases fail safely instead of silently deleting runtime code. Offline CI is green on the PR, merged main, and 3.1.1 version commit. All Fit Intelligence diagnostics and the earlier Alma shared-ID deduplication are retained. No job scoring thresholds, source budgets, CV preferences, application routing or manual-final-Submit safeguards are changed.",
-  "last_published": "3.1.0",
-  "last_sha256": "a53111a896ba13a27e2acecd2f738ccb6fb1987e391cd797358f1827899bddd5"
+  "last_published": "3.1.1",
+  "last_sha256": "bd4552fcd097ab17e4ee78983b62fb6023c17756d0bc2b17536db45091875730"
 }

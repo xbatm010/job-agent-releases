@@ -9,10 +9,10 @@
       "min_version": "2.2.1"
     },
     "beta": {
-      "version": "3.1.0",
-      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.1.0/job-agent-3.1.0-macos.zip",
-      "sha256": "a53111a896ba13a27e2acecd2f738ccb6fb1987e391cd797358f1827899bddd5",
-      "notes": "Job Agent 3.1.0 Beta introduces privacy-safe Fit Intelligence diagnostics for the full scored vacancy pool: APPLY/REVIEW/SKIP totals per Data/BI, Support and QA, a primary and contributing blocker analysis, searchable-run funnel counts, and an aggregate last-run summary in Dashboard with detailed tooltips. A local atomic fit_report.json holds aggregate counts only, never personal data or job details. Includes the previously merged 3.0.16 cross-site Alma numeric-ID deduplication. No score thresholds, browser budgets, application safeguards, CV routing or manual-final-submit behavior changed. New pure-Python and real Qt offscreen regression coverage; PR and main GitHub Actions tests succeeded. After installing, run a new search to populate the diagnostic summary.",
+      "version": "3.1.1",
+      "url": "https://github.com/xbatm010/job-agent-releases/releases/download/v3.1.1/job-agent-3.1.1-macos.zip",
+      "sha256": "bd4552fcd097ab17e4ee78983b62fb6023c17756d0bc2b17536db45091875730",
+      "notes": "Job Agent 3.1.1 Beta is a release-integrity hotfix. The 3.1.0 automated publisher inadvertently removed the imported fit_intelligence.py file from the main branch while successfully producing the macOS app. This release restores that reviewed module, moves source persistence to a reviewed allowlist, and validates all top-level Python modules before macOS packaging so future releases fail safely instead of silently deleting runtime code. Offline CI is green on the PR, merged main, and 3.1.1 version commit. All Fit Intelligence diagnostics and the earlier Alma shared-ID deduplication are retained. No job scoring thresholds, source budgets, CV preferences, application routing or manual-final-Submit safeguards are changed.",
       "min_version": "2.3.1"
     }
   }
