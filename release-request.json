@@ -1,5 +1,5 @@
 {
-  "publish": true,
+  "publish": false,
   "request_id": 63,
   "version": "3.1.0",
   "channel": "beta",
@@ -7,6 +7,6 @@
   "base_source_url": "",
   "base_source_sha256": "",
   "notes": "Job Agent 3.1.0 Beta introduces privacy-safe Fit Intelligence diagnostics for the full scored vacancy pool: APPLY/REVIEW/SKIP totals per Data/BI, Support and QA, a primary and contributing blocker analysis, searchable-run funnel counts, and an aggregate last-run summary in Dashboard with detailed tooltips. A local atomic fit_report.json holds aggregate counts only, never personal data or job details. Includes the previously merged 3.0.16 cross-site Alma numeric-ID deduplication. No score thresholds, browser budgets, application safeguards, CV routing or manual-final-submit behavior changed. New pure-Python and real Qt offscreen regression coverage; PR and main GitHub Actions tests succeeded. After installing, run a new search to populate the diagnostic summary.",
-  "last_published": "3.0.15",
-  "last_sha256": "9a3ac02f4f0546b67c0fe13be00f82592ca8ee7aabc6a8babf0b7ea941c1d38c"
+  "last_published": "3.1.0",
+  "last_sha256": "a53111a896ba13a27e2acecd2f738ccb6fb1987e391cd797358f1827899bddd5"
 }
