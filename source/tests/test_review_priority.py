@@ -30,3 +30,21 @@ class RankingTests(unittest.TestCase):
         self.assertEqual([job["job_id"] for job in result],
                          ["better", "weaker", "risky"])
         self.assertTrue(all(job["decision"] == "REVIEW" for job in result))
+
+    def test_manual_suggestions_prioritize_fewer_requirements(self):
+        def record(key, exp):
+            return dict(job_id=key, title="IT Support", source="jobs.cz",
+                        role_class="target", decision="REVIEW", score=69,
+                        candidate_fit=24, evidence_quality="strong",
+                        location_gate="prague_area", hard_experience=False,
+                        junior_experience_requirement=exp,
+                        target_apply_blockers=[
+                            "1-2 years experience requirement or ambiguous range"
+                            if exp else "junior/trainee/L1 marker absent"
+                        ])
+        with patch.object(main, "SEARCH_SUPPORT_QA", False):
+            selected = main.safe_manual_review_candidates(
+                [record("experience-required", True), record("fewer-blockers", False)], 2
+            )
+        self.assertEqual([row["job_id"] for row in selected],
+                         ["fewer-blockers", "experience-required"])
