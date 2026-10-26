@@ -51,6 +51,31 @@ class DesktopTests(unittest.TestCase):
         combo = self.window.dashboard_decision_filter
         combo.setCurrentIndex(combo.findData(value))
 
+    def test_fit_intelligence_panel_uses_local_aggregate_and_ignores_broken_file(self):
+        report_path = desktop.HISTORY_FILE.parent / "fit_report.json"
+        report = {
+            "schema": 1, "generated_at": "2026-10-26T12:00:00+01:00",
+            "stages": {
+                "discovered": 20, "selected_for_enrichment": 10,
+                "deduplicated": 9, "scored": 9, "shortlisted": 3,
+            },
+            "decisions": {"APPLY": 0, "REVIEW": 3, "SKIP": 6},
+            "by_track": {
+                key: {"APPLY": 0, "REVIEW": 0, "SKIP": 0}
+                for key in ("data", "support", "qa", "other")
+            },
+            "primary_blockers": {"evidence": 2, "skills_fit": 1},
+        }
+        report_path.write_text(json.dumps(report), encoding="utf-8")
+        self.window._refresh_source_status()
+        self.assertIn("APPLY 0", self.window.fit_summary.text())
+        self.assertIn("недостаточно данных", self.window.fit_summary.text())
+        self.assertIn("discovered=20", self.window.fit_summary.toolTip())
+        self.assertFalse(self.window.fit_summary.isHidden())
+        report_path.write_text("{not json", encoding="utf-8")
+        self.window._refresh_source_status()
+        self.assertTrue(self.window.fit_summary.isHidden())
+
     def test_response_conversion_metrics_only_count_confirmed_submissions(self):
         records = [
             dict(job_id="job:2000000002", title="Applied", status="SUBMITTED_MANUALLY"),

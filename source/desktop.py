@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from html import escape
 from desktop_theme import LIGHT_STYLE, DECISION_LABELS, display_decision
 import gmail_responses
+from fit_intelligence import format_fit_summary
 from resume_routes import choose_resume, resume_group_for_job
 from desktop_widgets import VacancyDelegate, VacancyDetail, icon_pixmap, ui_icon, SOURCE_NAMES
 import io
@@ -1523,6 +1524,12 @@ class JobAgentWindow(QMainWindow):
         dash_filters.addWidget(self.filter_tabs, 0, 1)
         dash_filters.setColumnStretch(0, 1)
         dashboard_layout.addLayout(dash_filters)
+        self.fit_summary = QLabel("")
+        self.fit_summary.setObjectName("Muted")
+        self.fit_summary.setTextFormat(Qt.PlainText)
+        self.fit_summary.setWordWrap(True)
+        self.fit_summary.hide()
+        dashboard_layout.addWidget(self.fit_summary)
         self.dashboard_search.textChanged.connect(self._refresh_dashboard)
         self.dashboard_decision_filter.currentIndexChanged.connect(self._refresh_dashboard)
         self.dashboard_source_filter.currentIndexChanged.connect(self._refresh_dashboard)
@@ -3618,6 +3625,33 @@ class JobAgentWindow(QMainWindow):
             label.setText(f'<span style="color:{color};font-size:19px;">●</span> &nbsp; <b>{SOURCE_NAMES[name]}</b> &nbsp; <span style="color:#69758d;">{escape(caption)}</span>')
             details = "\n".join(info.get("details", []))
             label.setToolTip("Последний поиск: " + data.get("saved_at", "—") + ("\n" + details if details else ""))
+
+        # Display the latest complete, local aggregate only; never derive
+        # readiness from an incomplete search or employer correspondence.
+        try:
+            fit_report = json.loads((HISTORY_FILE.parent / "fit_report.json").read_text(encoding="utf-8"))
+            summary = format_fit_summary(fit_report)
+        except (OSError, ValueError, TypeError):
+            fit_report, summary = {}, ""
+        self.fit_summary.setText(summary)
+        self.fit_summary.setVisible(bool(summary))
+        if summary:
+            stages = fit_report.get("stages") or {}
+            by_track = fit_report.get("by_track") or {}
+            tooltips = [f"Последний анализ: {fit_report.get('generated_at', '—')}"]
+            tooltips.append("Этапы: " + ", ".join(
+                f"{key}={stages.get(key, 0)}" for key in
+                ("discovered", "selected_for_enrichment", "deduplicated", "scored", "shortlisted")
+            ))
+            for key in ("data", "support", "qa", "other"):
+                values = by_track.get(key) or {}
+                tooltips.append(
+                    f"{key}: APPLY={values.get('APPLY', 0)}, "
+                    f"REVIEW={values.get('REVIEW', 0)}, SKIP={values.get('SKIP', 0)}"
+                )
+            self.fit_summary.setToolTip("\n".join(tooltips))
+        else:
+            self.fit_summary.setToolTip("")
 
     def _check_native_notifications(self):
         """Opt-in local notification checks; no background tasks when closed."""
